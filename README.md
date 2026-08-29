@@ -40,7 +40,7 @@ NitroMap combines three useful surfaces without hiding how any of them work:
 |---|---|
 | Concurrent map | Familiar, thread-safe reads and writes on the in-memory hot path. |
 | Persistent record store | Asynchronous batching, change coalescing, recovery, tombstones, and atomic compaction. |
-| Queryable service | SQL-like joins and aggregation plus a built-in REST API with authorization and filter hooks. |
+| Queryable service | SQL-like selection, filtering, joins, grouping, aggregation, ordering, limits, and named parameters, plus a built-in REST API with authorization and filter hooks. |
 
 ### Highlights
 
