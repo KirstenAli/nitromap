@@ -193,43 +193,43 @@ records, JSON, Protocol Buffers, or any stable binary format. Key encoding must
 remain deterministic: the same logical key should always produce the same
 meaning when the log is replayed.
 
-For example, a small binary codec can store a `Customer` record:
+For example, an application that uses Jackson can store a `Customer` as JSON:
 
 ```java
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 record Customer(String name, String city) {}
 
-final class CustomerCodec implements Codec<Customer> {
+final class CustomerJsonCodec implements Codec<Customer> {
+
+    private final ObjectMapper json = new ObjectMapper();
 
     @Override
     public byte[] encode(Customer customer) throws IOException {
-        var bytes = new ByteArrayOutputStream();
-        try (var output = new DataOutputStream(bytes)) {
-            output.writeUTF(customer.name());
-            output.writeUTF(customer.city());
-        }
-        return bytes.toByteArray();
+        return json.writeValueAsBytes(customer);
     }
 
     @Override
     public Customer decode(byte[] bytes) throws IOException {
-        try (var input = new DataInputStream(new ByteArrayInputStream(bytes))) {
-            return new Customer(input.readUTF(), input.readUTF());
-        }
+        return json.readValue(bytes, Customer.class);
     }
 }
 ```
 
-Supply the key and value codecs when the map is created:
+Supply the string key codec and JSON value codec when the map is created:
 
 ```java
 try (NitroMap<String, Customer> customers = new NitroMap<>(
         Path.of("data/customers"),
         Utf8StringCodec.INSTANCE,
-        new CustomerCodec())) {
+        new CustomerJsonCodec())) {
 
     customers.put("customer-1", new Customer("Ada", "London"));
 }
 ```
+
+Jackson is supplied by the application in this example. NitroMap itself keeps
+zero runtime dependencies and does not require a particular JSON library.
 
 ## SQL-like queries
 
