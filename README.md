@@ -29,8 +29,8 @@ a database server, ORM, HTTP framework, or runtime dependency graph. The core
 remains intentionally small, explicit, and understandable.
 
 **Current status:** early-stage, fully test-driven, Java 17 compatible, and best
-suited to embedded workloads where its documented consistency model is a good
-fit.
+suited to embedded applications that benefit from fast in-memory access and
+asynchronous persistence.
 
 ## Why NitroMap
 
