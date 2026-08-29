@@ -193,6 +193,44 @@ records, JSON, Protocol Buffers, or any stable binary format. Key encoding must
 remain deterministic: the same logical key should always produce the same
 meaning when the log is replayed.
 
+For example, a small binary codec can store a `Customer` record:
+
+```java
+record Customer(String name, String city) {}
+
+final class CustomerCodec implements Codec<Customer> {
+
+    @Override
+    public byte[] encode(Customer customer) throws IOException {
+        var bytes = new ByteArrayOutputStream();
+        try (var output = new DataOutputStream(bytes)) {
+            output.writeUTF(customer.name());
+            output.writeUTF(customer.city());
+        }
+        return bytes.toByteArray();
+    }
+
+    @Override
+    public Customer decode(byte[] bytes) throws IOException {
+        try (var input = new DataInputStream(new ByteArrayInputStream(bytes))) {
+            return new Customer(input.readUTF(), input.readUTF());
+        }
+    }
+}
+```
+
+Supply the key and value codecs when the map is created:
+
+```java
+try (NitroMap<String, Customer> customers = new NitroMap<>(
+        Path.of("data/customers"),
+        Utf8StringCodec.INSTANCE,
+        new CustomerCodec())) {
+
+    customers.put("customer-1", new Customer("Ada", "London"));
+}
+```
+
 ## SQL-like queries
 
 The query engine operates entirely on the in-memory maps. It does not scan the
