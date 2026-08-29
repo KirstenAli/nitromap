@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./assets/nitromap-logo.svg" alt="NitroMap — Fast by default. Durable by design." width="820">
+  <img src="./assets/nitromap-logo.svg" alt="NitroMap — Fast by default. Built to persist." width="820">
 </p>
 
 <p align="center">

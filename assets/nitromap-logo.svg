@@ -30,7 +30,7 @@
     Nitro<tspan fill="url(#nitro)">Map</tspan>
   </text>
   <text x="258" y="163" fill="#a9b8d3" font-family="Inter, Segoe UI, Helvetica Neue, Arial, sans-serif" font-size="20" font-weight="600" letter-spacing="4">
-    FAST BY DEFAULT. DURABLE BY DESIGN.
+    FAST BY DEFAULT. BUILT TO PERSIST.
   </text>
 
   <path d="M740 75h125M773 98h118M726 121h143" fill="none" stroke="url(#nitro)" stroke-linecap="round" stroke-opacity="0.55" stroke-width="4"/>
