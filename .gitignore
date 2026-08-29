@@ -1,0 +1,30 @@
+# Maven
+target/
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Visual Studio Code
+.vscode/
+
+# Eclipse
+.classpath
+.project
+.settings/
+
+# macOS and Windows
+.DS_Store
+Thumbs.db
+
+# Java runtime files
+*.class
+hs_err_pid*
+replay_pid*
+
+# NitroMap runtime data
+data/
+nitromap.log
+nitromap.log.compacting
