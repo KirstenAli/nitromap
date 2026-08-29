@@ -1,6 +1,23 @@
-# NitroMap
+<p align="center">
+  <img src="./assets/nitromap-logo.svg" alt="NitroMap — Fast by default. Durable by design." width="820">
+</p>
 
-> Fast by default. Durable by design.
+<p align="center">
+  <img src="https://img.shields.io/badge/Java-17%2B-f97316?style=for-the-badge&amp;logo=openjdk&amp;logoColor=white" alt="Java 17 or newer">
+  <img src="https://img.shields.io/badge/Maven-Build-c71a36?style=for-the-badge&amp;logo=apachemaven&amp;logoColor=white" alt="Built with Maven">
+  <img src="https://img.shields.io/badge/Runtime_dependencies-0-16a34a?style=for-the-badge" alt="Zero runtime dependencies">
+  <img src="https://img.shields.io/badge/Tests-120_passed-2563eb?style=for-the-badge" alt="120 tests passed">
+</p>
+
+<p align="center">
+  <a href="#why-nitromap">Why NitroMap</a> &bull;
+  <a href="#quick-start">Quick start</a> &bull;
+  <a href="#sql-like-queries">SQL</a> &bull;
+  <a href="#rest-api">REST API</a> &bull;
+  <a href="#performance-benchmarks">Benchmarks</a>
+</p>
+
+---
 
 NitroMap is an embedded Java record store built around the API developers already
 know: `ConcurrentHashMap`. Reads stay in memory, mutations are persisted by a
@@ -38,6 +55,24 @@ NitroMap combines three useful surfaces without hiding how any of them work:
 - Provides authorization and native HTTP filter hooks without an external web framework.
 - Has no runtime dependencies beyond the JDK.
 - Is verified by 120 correctness and integration tests plus five opt-in benchmark scenarios.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    A["Application threads"] -->|"put / remove"| B["NitroMap<br/>ConcurrentHashMap"]
+    B -->|"mark dirty"| C["Dirty-key coalescer"]
+    C --> D["Background writer"]
+    D --> E[("nitromap.log")]
+    E -->|"startup replay"| B
+    B --> Q["SQL-like query engine"]
+    B --> H["Built-in REST API"]
+
+    classDef hot fill:#ff9f1c,color:#111827,stroke:#ff5a1f,stroke-width:2px;
+    classDef service fill:#16233f,color:#f8fafc,stroke:#7dd3fc,stroke-width:1px;
+    class B hot;
+    class A,C,D,E,Q,H service;
+```
 
 ## How persistence works
 
@@ -454,6 +489,9 @@ temporary local server.
 ## Project layout
 
 ```text
+assets/
+└── nitromap-logo.svg        project wordmark and README banner
+
 src/main/java/dev/nitromap/
 ├── NitroMap.java             concurrent map and public persistence API
 ├── codec/                   binary encoding contracts and codecs
