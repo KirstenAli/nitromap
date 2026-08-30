@@ -1,10 +1,12 @@
 package dev.nitromap;
 
 import dev.nitromap.codec.Codec;
+import dev.nitromap.codec.Utf8StringCodec;
 import dev.nitromap.persistence.LogStore;
 
 import java.io.IOException;
 import java.io.Serial;
+import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.util.Collection;
 import java.util.Map;
@@ -22,6 +24,33 @@ public class NitroMap<K, V> extends ConcurrentHashMap<K, V> implements AutoClose
     private static final long serialVersionUID = 1L;
 
     private final transient LogStore<K, V> store;
+    private transient boolean closed;
+
+    /** Opens a persistent UTF-8 string map with best-effort shutdown handling. */
+    public static NitroMap<String, String> strings(String directory) {
+        return strings(Path.of(directory));
+    }
+
+    /** Opens a persistent UTF-8 string map with best-effort shutdown handling. */
+    public static NitroMap<String, String> strings(Path directory) {
+        return open(directory, Utf8StringCodec.INSTANCE, Utf8StringCodec.INSTANCE);
+    }
+
+    /** Opens a persistent map and reports startup failures as unchecked I/O errors. */
+    public static <K, V> NitroMap<K, V> open(
+            String directory, Codec<K> keys, Codec<V> values) {
+        return open(Path.of(directory), keys, values);
+    }
+
+    /** Opens a persistent map and reports startup failures as unchecked I/O errors. */
+    public static <K, V> NitroMap<K, V> open(
+            Path directory, Codec<K> keys, Codec<V> values) {
+        try {
+            return managed(new NitroMap<>(directory, keys, values));
+        } catch (IOException exception) {
+            throw new UncheckedIOException("Cannot open NitroMap at " + directory, exception);
+        }
+    }
 
     public NitroMap() {
         super();
@@ -91,8 +120,11 @@ public class NitroMap<K, V> extends ConcurrentHashMap<K, V> implements AutoClose
     }
 
     @Override
-    public void close() throws IOException {
-        if (store != null) store.close();
+    public synchronized void close() throws IOException {
+        if (store == null || closed) return;
+        closed = true;
+        ShutdownRegistry.remove(this);
+        store.close();
     }
 
     private void replayPut(K key, V value) {
@@ -114,5 +146,10 @@ public class NitroMap<K, V> extends ConcurrentHashMap<K, V> implements AutoClose
     @SuppressWarnings("unchecked")
     private void markRemoved(Object key) {
         if (store != null) store.mark((K) key);
+    }
+
+    private static <K, V> NitroMap<K, V> managed(NitroMap<K, V> map) {
+        ShutdownRegistry.add(map);
+        return map;
     }
 }

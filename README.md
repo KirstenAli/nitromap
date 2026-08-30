@@ -6,7 +6,7 @@
   <img src="https://img.shields.io/badge/Java-17%2B-f97316?style=for-the-badge&amp;logo=openjdk&amp;logoColor=white" alt="Java 17 or newer">
   <img src="https://img.shields.io/badge/Maven-Build-c71a36?style=for-the-badge&amp;logo=apachemaven&amp;logoColor=white" alt="Built with Maven">
   <img src="https://img.shields.io/badge/Runtime_dependencies-0-16a34a?style=for-the-badge" alt="Zero runtime dependencies">
-  <img src="https://img.shields.io/badge/Tests-120_passed-2563eb?style=for-the-badge" alt="120 tests passed">
+  <img src="https://img.shields.io/badge/Tests-126_passed-2563eb?style=for-the-badge" alt="126 tests passed">
 </p>
 
 <p align="center">
@@ -45,8 +45,10 @@ NitroMap combines three useful surfaces without hiding how any of them work:
 ### Highlights
 
 - Extends `ConcurrentHashMap` instead of replacing it with a proprietary API.
+- Opens persistent UTF-8 string maps with `NitroMap.strings("data/customers")`.
 - Persists `put`, `putAll`, both `remove` variants, and `removeAll` asynchronously.
 - Keeps serialization and file I/O away from application write threads.
+- Gives factory-created maps one shared JVM shutdown safety net.
 - Replays a length-prefixed append-only log and safely discards a torn final record.
 - Atomically compacts historical records into the current map state.
 - Uses explicit application codecs rather than Java object serialization.
@@ -54,7 +56,7 @@ NitroMap combines three useful surfaces without hiding how any of them work:
 - Serves CRUD, batch, query, flush, compact, and health routes through built-in Java networking.
 - Provides authorization and native HTTP filter hooks without an external web framework.
 - Has no runtime dependencies beyond the JDK.
-- Is verified by 120 correctness and integration tests plus five opt-in benchmark scenarios.
+- Is verified by 126 correctness and integration tests plus five opt-in benchmark scenarios.
 
 ## Architecture
 
@@ -136,45 +138,36 @@ following Maven coordinates:
 </dependency>
 ```
 
-Create a persistent map with a directory and deterministic key/value codecs:
+Create a persistent UTF-8 string map in one line:
 
 ```java
 import dev.nitromap.NitroMap;
-import dev.nitromap.codec.Utf8StringCodec;
 
-import java.nio.file.Path;
 import java.util.Map;
 
-Path directory = Path.of("data/customers");
+NitroMap<String, String> customers = NitroMap.strings("data/customers");
 
-try (NitroMap<String, String> customers = new NitroMap<>(
-        directory,
-        Utf8StringCodec.INSTANCE,
-        Utf8StringCodec.INSTANCE)) {
-
-    customers.put("customer-1", "Ada");
-    customers.putAll(Map.of("customer-2", "Grace", "customer-3", "Linus"));
-    customers.remove("customer-3");
-}
+customers.put("customer-1", "Ada");
+customers.putAll(Map.of("customer-2", "Grace", "customer-3", "Linus"));
+customers.remove("customer-3");
 ```
 
-Opening another map with the same directory and codecs restores those entries:
+The factory creates the directory, restores existing records, starts background
+persistence, and reports startup failures as `UncheckedIOException`. It can be
+kept as an application-wide field just like any other map:
 
 ```java
-try (NitroMap<String, String> customers = new NitroMap<>(
-        directory,
-        Utf8StringCodec.INSTANCE,
-        Utf8StringCodec.INSTANCE)) {
-
-    System.out.println(customers.get("customer-1")); // Ada
-}
+private static final NitroMap<String, String> CUSTOMERS =
+        NitroMap.strings("data/customers");
 ```
 
-The writer persists those changes automatically. `flush()` is only needed when
-the application requires a confirmed durability checkpoint while the map stays
-open. `close()` stops the writer, performs a final flush, and closes the file.
-Prefer try-with-resources so normal shutdown does not leave recent changes only
-in memory.
+Factory-created maps share one JVM shutdown hook that performs a best-effort
+final close during ordinary shutdown. `flush()` remains available for an
+explicit durability checkpoint. Calling `close()` flushes immediately, releases
+the file, and unregisters the map from the hook; use try-with-resources for
+short-lived maps. Shutdown hooks cannot protect against `SIGKILL`, JVM crashes,
+or power loss. The checked `Path` and codec constructor remains available when
+an application wants to handle startup I/O failures directly.
 
 ## Codecs
 
@@ -219,13 +212,12 @@ final class CustomerJsonCodec implements Codec<Customer> {
 Supply the string key codec and JSON value codec when the map is created:
 
 ```java
-try (NitroMap<String, Customer> customers = new NitroMap<>(
-        Path.of("data/customers"),
+NitroMap<String, Customer> customers = NitroMap.open(
+        "data/customers",
         Utf8StringCodec.INSTANCE,
-        new CustomerJsonCodec())) {
+        new CustomerJsonCodec());
 
-    customers.put("customer-1", new Customer("Ada", "London"));
-}
+customers.put("customer-1", new Customer("Ada", "London"));
 ```
 
 Jackson is supplied by the application in this example. NitroMap itself keeps
@@ -476,8 +468,8 @@ current boundaries are deliberate:
 - Values should be treated as immutable. Mutating an object returned by `get`
   does not mark its key dirty; replace it with another `put` instead.
 - Recent asynchronous mutations can be lost if the process terminates before
-  the next batch reaches disk. Call `flush()` when a durability boundary is
-  required.
+  the next batch reaches disk. Factory-created maps flush during ordinary JVM
+  shutdown, but hard termination still requires an earlier `flush()` boundary.
 - Compaction is manual; there is no automatic size or stale-record threshold
   yet.
 - A persistence directory should be opened by only one NitroMap instance at a
@@ -499,7 +491,7 @@ fast common path.
 
 ## Building and testing
 
-Run the 120 correctness and integration tests:
+Run the 126 correctness and integration tests:
 
 ```shell
 mvn test
@@ -523,12 +515,12 @@ Run only the five opt-in performance scenarios:
 mvn -Pbenchmark test
 ```
 
-The correctness suite covers map semantics, persisted writes and removals,
-restart recovery, torn and invalid records, background-writer failures,
-compaction failures and races, concurrency, codecs, SQL parsing and execution,
-join strategies, grouping, ordering, validation, binary HTTP batches,
-authorization, filters, JSON encoding, and live REST requests against a
-temporary local server.
+The correctness suite covers map semantics, convenience factories, shutdown
+lifecycle, persisted writes and removals, restart recovery, torn and invalid
+records, background-writer failures, compaction failures and races, concurrency,
+codecs, SQL parsing and execution, join strategies, grouping, ordering,
+validation, binary HTTP batches, authorization, filters, JSON encoding, and
+live REST requests against a temporary local server.
 
 ## Project layout
 
@@ -538,6 +530,7 @@ assets/
 
 src/main/java/dev/nitromap/
 ├── NitroMap.java             concurrent map and public persistence API
+├── ShutdownRegistry.java     shared JVM shutdown safety net
 ├── codec/                   binary encoding contracts and codecs
 ├── http/                    REST server, routing, hooks, and wire formats
 ├── persistence/             batching, append-only logging, and recovery
