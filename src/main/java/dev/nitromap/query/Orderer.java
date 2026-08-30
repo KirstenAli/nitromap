@@ -13,9 +13,14 @@ final class Orderer {
     }
 
     void sort(List<Map<String, Object>> rows) {
+        Comparator<Map<String, Object>> comparator = comparator();
+        if (comparator != null) rows.sort(comparator);
+    }
+
+    Comparator<Map<String, Object>> comparator() {
         Comparator<Map<String, Object>> comparator = null;
         for (OrderSpec order : query.orders()) comparator = append(comparator, order);
-        if (comparator != null) rows.sort(comparator);
+        return comparator;
     }
 
     private Comparator<Map<String, Object>> append(

@@ -4,6 +4,7 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import dev.nitromap.query.QueryEngine;
 import dev.nitromap.query.QueryResult;
+import dev.nitromap.query.BinaryScalar;
 
 import java.io.IOException;
 import java.util.Map;
@@ -45,6 +46,9 @@ final class RestHandler implements HttpHandler {
         String path = exchange.getRequestURI().getPath();
         if (path.equals("/health")) health(exchange);
         else if (path.equals("/query")) query(exchange);
+        else if (path.equals("/cluster/stream")) stream(exchange);
+        else if (path.equals("/cluster/scan")) scan(exchange);
+        else if (path.equals("/cluster/lookup")) lookup(exchange);
         else if (maps.route(exchange, path)) return;
         else HttpSupport.error(exchange, 404, "Not found");
     }
@@ -59,6 +63,45 @@ final class RestHandler implements HttpHandler {
         if (queries == null) throw new IllegalArgumentException("Query engine is not configured");
         QueryResult result = queries.query(HttpSupport.text(exchange), HttpSupport.parameters(exchange));
         HttpSupport.json(exchange, 200, Map.of("rows", result.rows()));
+    }
+
+    private void stream(HttpExchange exchange) throws IOException {
+        if (!method(exchange, "POST")) return;
+        requireQueries();
+        HttpSupport.rows(exchange, queries.stream(HttpSupport.text(exchange), HttpSupport.parameters(exchange)));
+    }
+
+    private void scan(HttpExchange exchange) throws IOException {
+        if (!method(exchange, "GET")) return;
+        requireQueries();
+        Map<String, Object> values = HttpSupport.parameters(exchange);
+        HttpSupport.rows(exchange, queries.scan(required(values, "table"), required(values, "alias")));
+    }
+
+    private void lookup(HttpExchange exchange) throws IOException {
+        if (!method(exchange, "POST")) return;
+        requireQueries();
+        Map<String, Object> values = HttpSupport.parameters(exchange);
+        Map<String, Object> row = queries.lookup(required(values, "table"),
+                required(values, "alias"), scalar(exchange));
+        HttpSupport.rows(exchange, row == null ? java.util.List.of() : java.util.List.of(row));
+    }
+
+    private Object scalar(HttpExchange exchange) throws IOException {
+        try {
+            return BinaryScalar.decode(HttpSupport.body(exchange));
+        } catch (IOException exception) {
+            throw new IllegalArgumentException("Invalid scalar key", exception);
+        }
+    }
+
+    private void requireQueries() {
+        if (queries == null) throw new IllegalArgumentException("Query engine is not configured");
+    }
+
+    private String required(Map<String, Object> values, String name) {
+        if (!values.containsKey(name)) throw new IllegalArgumentException("Missing parameter: " + name);
+        return String.valueOf(values.get(name));
     }
 
     private boolean method(HttpExchange exchange, String allowed) throws IOException {

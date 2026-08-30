@@ -6,13 +6,14 @@
   <img src="https://img.shields.io/badge/Java-17%2B-f97316?style=for-the-badge&amp;logo=openjdk&amp;logoColor=white" alt="Java 17 or newer">
   <img src="https://img.shields.io/badge/Maven-Build-c71a36?style=for-the-badge&amp;logo=apachemaven&amp;logoColor=white" alt="Built with Maven">
   <img src="https://img.shields.io/badge/Runtime_dependencies-0-16a34a?style=for-the-badge" alt="Zero runtime dependencies">
-  <img src="https://img.shields.io/badge/Tests-155_passed-2563eb?style=for-the-badge" alt="155 tests passed">
+  <img src="https://img.shields.io/badge/Tests-207-2563eb?style=for-the-badge" alt="207 correctness and integration tests">
 </p>
 
 <p align="center">
   <a href="#why-nitromap">Why NitroMap</a> &bull;
   <a href="#quick-start">Quick start</a> &bull;
   <a href="#sql-like-queries">SQL</a> &bull;
+  <a href="#shared-nothing-clustering">Clustering</a> &bull;
   <a href="#rest-api">REST API</a> &bull;
   <a href="#performance-benchmarks">Benchmarks</a>
 </p>
@@ -22,7 +23,7 @@
 NitroMap is an embedded Java record store built around the API developers already
 know: `ConcurrentHashMap`. Reads stay in memory, mutations are persisted by a
 background writer, named maps can be queried with a practical SQL subset, and
-the complete feature set can be exposed through Java's built-in HTTP server.
+the same maps can be exposed or sharded through Java's built-in networking.
 
 It is designed for applications that need fast local state without introducing
 a database server, ORM, HTTP framework, or runtime dependency graph. The core
@@ -44,6 +45,10 @@ asynchronous persistence.
 - [SQL-like queries](#sql-like-queries)
   - [Supported query subset](#supported-query-subset)
   - [Query optimization](#query-optimization)
+- [Shared-nothing clustering](#shared-nothing-clustering)
+  - [Key routing](#key-routing)
+  - [Distributed query execution](#distributed-query-execution)
+  - [Failure and topology changes](#failure-and-topology-changes)
 - [Memory-bounded eviction](#memory-bounded-eviction)
 - [REST API](#rest-api)
   - [Endpoints](#endpoints)
@@ -69,7 +74,8 @@ NitroMap combines three useful surfaces without hiding how any of them work:
 |---|---|
 | Concurrent map | Familiar, thread-safe reads and writes on the in-memory hot path. |
 | Persistent record store | Asynchronous batching, change coalescing, recovery, tombstones, and atomic compaction. |
-| Queryable service | SQL-like selection, filtering, joins, grouping, aggregation, ordering, limits, and named parameters, plus a built-in REST API with authorization and filter hooks. |
+| Queryable service | SQL-like selection, filtering, joins, grouping, aggregation, ordering, limits, and named parameters, plus local and distributed execution. |
+| Shared-nothing cache | Stable logical partitions, zero-replication HTTP routing, streamed binary rows, bounded shuffles, and explicit topology changes. |
 
 ### Highlights
 
@@ -83,10 +89,12 @@ NitroMap combines three useful surfaces without hiding how any of them work:
 - Atomically compacts historical records into the current map state.
 - Uses explicit application codecs rather than Java object serialization.
 - Supports selection, joins, filtering, grouping, ordering, limits, and named parameters.
+- Routes keys across any configured number of nodes without replicas or fallback reads.
+- Executes distributed scans, hash shuffles, joins, aggregation, ordering, and limits with bounded memory.
 - Serves one or many named maps through built-in Java networking.
 - Provides authorization and native HTTP filter hooks without an external web framework.
 - Has no runtime dependencies beyond the JDK.
-- Is verified by 155 correctness and integration tests plus six opt-in benchmark tests.
+- Is verified by 207 correctness and integration tests plus six opt-in benchmark tests.
 
 ## Architecture
 
@@ -354,6 +362,152 @@ key-to-value entry plus a bucket membership for each row, and adds work to
 supported mutations. Maps without an index keep the normal write path apart
 from one inactive-listener check.
 
+## Shared-nothing clustering
+
+NitroMap can shard a named map across any fixed set of processes. Each key has
+one owner, each owner keeps using an ordinary local `NitroMap`, and there is no
+replica, quorum, fallback read, or hidden copy. Local asynchronous persistence,
+eviction, indexing, and recovery continue to work exactly as they do in the
+embedded API.
+
+```mermaid
+flowchart LR
+    C["ClusterMap client"] -->|"stable key hash"| P["1,024 logical partitions"]
+    P --> A["node-a<br/>local NitroMap"]
+    P --> B["node-b<br/>local NitroMap"]
+    P --> D["node-c<br/>local NitroMap"]
+    A --> LA[("local log")]
+    B --> LB[("local log")]
+    D --> LD[("local log")]
+
+    classDef route fill:#ff9f1c,color:#111827,stroke:#ff5a1f,stroke-width:2px;
+    classDef node fill:#16233f,color:#f8fafc,stroke:#7dd3fc,stroke-width:1px;
+    class C,P route;
+    class A,B,D,LA,LB,LD node;
+```
+
+### Key routing
+
+Configure the nodes and choose a logical partition count independently of the
+number of processes:
+
+```java
+import dev.nitromap.cluster.ClusterMap;
+import dev.nitromap.cluster.ClusterNode;
+import dev.nitromap.cluster.ClusterTopology;
+import dev.nitromap.cluster.HttpClusterTransport;
+import dev.nitromap.codec.Utf8StringCodec;
+
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.util.List;
+import java.util.Map;
+
+var nodes = List.of(
+        new ClusterNode("node-a", URI.create("http://10.0.0.11:8080")),
+        new ClusterNode("node-b", URI.create("http://10.0.0.12:8080")),
+        new ClusterNode("node-c", URI.create("http://10.0.0.13:8080")));
+
+var topology = ClusterTopology.evenly(1_024, nodes);
+var transport = new HttpClusterTransport<>(HttpClient.newHttpClient(),
+        Utf8StringCodec.INSTANCE,
+        Utf8StringCodec.INSTANCE,
+        Map.of("X-Api-Key", "secret"));
+
+var customers = new ClusterMap<>(
+        "customers", Utf8StringCodec.INSTANCE, topology, transport);
+
+customers.put("customer-1", "Ada");
+String customer = customers.get("customer-1");
+```
+
+The key codec bytes are hashed with stable FNV-1a, then mapped to a logical
+partition and its configured owner. Routing therefore does not depend on a
+JVM-specific object hash. `putAll` and `removeAll` group keys by owner and send
+at most one binary request to each affected node.
+
+`ClusterMap` keeps the familiar `get`, `put`, `remove`, `putAll`, and
+`removeAll` surface but does not implement `Map`: returning the previous value
+from a remote `put` would require another network read on the write path.
+
+The example uses three nodes, but the implementation does not assume three or
+four. All clients must use the same partition count and ownership table.
+`ClusterTopology.assigned(...)` restores an exact assignment from application
+configuration.
+
+### Distributed query execution
+
+Every data node exposes the same local catalog through its server. A coordinator
+can then query local catalogs, remote nodes, or a mixture of both:
+
+```java
+import dev.nitromap.query.DistributedQueryEngine;
+
+import java.net.URI;
+import java.nio.file.Path;
+
+var queries = DistributedQueryEngine.builder()
+        .node("node-a", URI.create("http://10.0.0.11:8080"))
+        .node("node-b", URI.create("http://10.0.0.12:8080"))
+        .node("node-c", URI.create("http://10.0.0.13:8080"))
+        .header("X-Api-Key", "secret")
+        .shufflePartitions(128)
+        .maxRowsInMemory(10_000)
+        .spillDirectory(Path.of("data/query-spill"))
+        .build();
+
+try (var result = queries.query("""
+        SELECT c.city, COUNT(*) AS total
+        FROM customers c
+        GROUP BY c.city
+        ORDER BY total DESC
+        LIMIT 20
+        """)) {
+    result.stream().forEach(System.out::println);
+}
+```
+
+Every node catalog must declare every distributed table, using an empty local
+map when that node currently owns no rows for a table. The server enables the
+data-plane routes through `.queries(localQueryEngine)`.
+
+The execution path is intentionally bounded:
+
+- Scan/filter/projection queries run on each source node and stream binary rows.
+- Grouping performs per-input partial counts, hashes group keys into shuffle
+  partitions, externally sorts partials when needed, then combines them.
+- Equality joins hash both sides with numeric-aware keys. A small side uses an
+  in-memory hash table; oversized or skewed buckets use bounded blocks and spill.
+- Ordered limits keep a bounded top-K heap when K fits the memory allowance.
+  Larger sorts use sorted spill runs and a bounded global merge.
+- Operators pull remote rows incrementally. Bounded stores spill instead of
+  growing the heap, and `DistributedQueryResult` must be closed so temporary
+  files can be removed.
+
+The binary distributed row format supports `NULL`, strings, booleans, primitive
+numeric values, characters, and byte arrays. Application records remain local;
+schemas turn their queryable columns into these scalar values before transport.
+
+The current shuffle and final merge are coordinated by the process running
+`DistributedQueryEngine`. Its heap stays bounded and it never collects the full
+result in memory, but that coordinator is still the network and compute control
+point. Peer-to-peer shuffle scheduling is a future step if one coordinator
+becomes the measured bottleneck.
+
+### Failure and topology changes
+
+Owner failure is explicit: operations for its partitions fail, and NitroMap does
+not retry another node because another copy does not exist. This is deliberate
+cache behavior, not high availability.
+
+Logical partitions remain fixed when membership changes. Add membership with
+`withNodes(...)`, move only selected partitions with `reassign(...)`, then
+install the new topology with `customers.topology(...)`. Reassignment changes
+routing only; it does not copy old cache entries. The moved partitions start
+empty at their new owner and old files remain local until the application
+removes them. `rebalance(...)` is an explicit full redistribution of ownership,
+not an automatic reaction to node failure.
+
 ## Memory-bounded eviction
 
 NitroMap keeps every entry by default. Applications that can safely discard
@@ -434,6 +588,9 @@ can keep them as fields and close them during normal application shutdown.
 | `PUT` | `{prefix}/entries` | Put a binary batch. |
 | `DELETE` | `{prefix}/entries` | Remove a binary batch of keys. |
 | `POST` | `/query` | Execute a SQL-like query. |
+| `POST` | `/cluster/stream` | Stream a node-local filter/projection stage as binary rows. |
+| `GET` | `/cluster/scan` | Stream qualified table rows for distributed blocking operators. |
+| `POST` | `/cluster/lookup` | Read one qualified table row by a binary scalar key. |
 | `POST` | `{prefix}/flush` | Wait until that map's pending mutations are durable. |
 | `POST` | `{prefix}/compact` | Compact that map's persistence log. |
 
@@ -478,6 +635,12 @@ Configure a `QueryEngine` with `.queries(queries)` to enable this endpoint.
 Named HTTP maps and SQL catalog entries are configured separately, so the same
 map can use a different public route name and query table name when needed.
 
+The `/cluster/*` routes are the internal data plane used by
+`DistributedQueryEngine`. They require `.queries(queries)`, use the same
+authorization hook as every other route, and stream NitroMap's typed binary row
+format rather than JSON. They should not be exposed publicly without
+authentication and transport security.
+
 The authorization hook runs before every route. It defaults to allow-all, so a
 network-facing deployment should supply `.authorize(...)`. Native Java HTTP
 filters can handle logging, request IDs, rate limiting, or broader middleware:
@@ -494,10 +657,10 @@ integration before exposing it to an untrusted network.
 ## Where NitroMap fits
 
 NitroMap is a strong fit for fast local indexes, embedded metadata stores,
-desktop and edge applications, durable service caches, developer tools, and
-small services that benefit from map semantics with optional SQL and HTTP
-access. It is particularly useful when operational simplicity and predictable
-local performance matter more than distributed transactions.
+desktop and edge applications, persistent service caches, developer tools, and
+shared-nothing cache clusters that explicitly accept node-local data loss. It
+is particularly useful when operational simplicity and predictable local
+performance matter more than distributed transactions or high availability.
 
 It is not intended to replace a distributed database, a transactional ledger,
 or a multi-process storage engine. The boundaries below make that distinction
@@ -625,6 +788,15 @@ current boundaries are deliberate:
 - Aggregation currently supports `COUNT(*)` only.
 - Joins are inner equality joins; outer joins and arbitrary join expressions are
   not supported.
+- Cluster routing has no replication, discovery, health-based failover, or
+  automatic data movement. Every client must receive the same topology.
+- Reassigning a logical partition changes its owner but does not migrate its old
+  cache entries. Losing an owner loses access to its partitions.
+- Distributed rows support scalar schema values. The current coordinator owns
+  shuffle scheduling and final merging; peer-to-peer shuffle is not yet
+  implemented.
+- A distributed query is weakly consistent across independently scanned nodes;
+  it does not create a cluster-wide snapshot or pause concurrent writers.
 
 Keeping these guarantees explicit lets the implementation stay compact and
 makes it clear where future capabilities can be added without compromising the
@@ -632,7 +804,7 @@ fast common path.
 
 ## Building and testing
 
-Run the 155 correctness and integration tests:
+Run the 207 correctness and integration tests:
 
 ```shell
 mvn test
@@ -661,10 +833,13 @@ lifecycle, persisted writes and removals, restart recovery, torn and invalid
 records, background-writer failures, compaction failures and races, concurrency,
 codecs, SQL parsing and execution, join strategies, grouping, ordering,
 validation, binary HTTP batches, authorization, filters, JSON encoding,
-live REST requests, named-map routing, and heterogeneous codecs against a
-temporary local server. Query tests cover direct access paths, early limits,
-index maintenance, concurrent writes, numeric and null values, indexed joins,
-background eviction, concurrent eviction, and persisted eviction tombstones.
+live REST requests, named-map routing, heterogeneous codecs, stable cluster
+routing, topology changes, zero-fallback failures, streamed binary query rows,
+remote query stages, hash shuffles, partial aggregation, global ordering,
+bounded skew joins, and spill cleanup. Query tests also cover direct access
+paths, early limits, index maintenance, concurrent writes, numeric and null
+values, indexed joins, background eviction, concurrent eviction, and persisted
+eviction tombstones.
 
 ## Project layout
 
@@ -677,6 +852,7 @@ src/main/java/dev/nitromap/
 ├── Evictor.java              opt-in destructive background eviction
 ├── ShutdownRegistry.java     shared JVM shutdown safety net
 ├── codec/                   binary encoding contracts and codecs
+├── cluster/                 stable partitions and zero-replication routing
 ├── http/                    REST server, routing, hooks, and wire formats
 ├── persistence/             batching, append-only logging, and recovery
 └── query/                   schemas, SQL parsing, planning, and execution

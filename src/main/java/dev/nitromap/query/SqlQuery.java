@@ -13,7 +13,11 @@ record SqlQuery(List<SelectItem> select, Source from, List<JoinSpec> joins,
 
     boolean earlyLimit() {
         return limit < Integer.MAX_VALUE
-                && joins.isEmpty() && !grouped() && orders.isEmpty();
+                && streamable();
+    }
+
+    boolean streamable() {
+        return joins.isEmpty() && !grouped() && orders.isEmpty();
     }
 
     String orderLabel(String requested) {
@@ -50,13 +54,13 @@ sealed interface SelectValue permits ColumnRef, CountAll, Wildcard {
 
 sealed interface Operand permits ColumnRef, LiteralValue, ParameterValue {
 
-    Object value(Row row, Map<String, ?> parameters);
+    Object value(ValueRow row, Map<String, ?> parameters);
 }
 
 record ColumnRef(String qualifier, String name) implements SelectValue, Operand {
 
     @Override
-    public Object value(Row row, Map<String, ?> parameters) {
+    public Object value(ValueRow row, Map<String, ?> parameters) {
         return row.read(this);
     }
 
@@ -78,7 +82,7 @@ record Wildcard() implements SelectValue {
 record LiteralValue(Object literal) implements Operand {
 
     @Override
-    public Object value(Row row, Map<String, ?> parameters) {
+    public Object value(ValueRow row, Map<String, ?> parameters) {
         return literal;
     }
 }
@@ -86,7 +90,7 @@ record LiteralValue(Object literal) implements Operand {
 record ParameterValue(String name) implements Operand {
 
     @Override
-    public Object value(Row row, Map<String, ?> parameters) {
+    public Object value(ValueRow row, Map<String, ?> parameters) {
         if (!parameters.containsKey(name)) throw new IllegalArgumentException("Missing parameter: " + name);
         return parameters.get(name);
     }
@@ -94,13 +98,13 @@ record ParameterValue(String name) implements Operand {
 
 sealed interface Condition permits Always, Comparison, Logical {
 
-    boolean test(Row row, Map<String, ?> parameters);
+    boolean test(ValueRow row, Map<String, ?> parameters);
 }
 
 record Always() implements Condition {
 
     @Override
-    public boolean test(Row row, Map<String, ?> parameters) {
+    public boolean test(ValueRow row, Map<String, ?> parameters) {
         return true;
     }
 }
@@ -108,7 +112,7 @@ record Always() implements Condition {
 record Comparison(Operand left, CompareOperator operator, Operand right) implements Condition {
 
     @Override
-    public boolean test(Row row, Map<String, ?> parameters) {
+    public boolean test(ValueRow row, Map<String, ?> parameters) {
         return operator.test(left.value(row, parameters), right.value(row, parameters));
     }
 }
@@ -116,7 +120,7 @@ record Comparison(Operand left, CompareOperator operator, Operand right) impleme
 record Logical(Condition left, LogicOperator operator, Condition right) implements Condition {
 
     @Override
-    public boolean test(Row row, Map<String, ?> parameters) {
+    public boolean test(ValueRow row, Map<String, ?> parameters) {
         return operator == LogicOperator.AND
                 ? left.test(row, parameters) && right.test(row, parameters)
                 : left.test(row, parameters) || right.test(row, parameters);

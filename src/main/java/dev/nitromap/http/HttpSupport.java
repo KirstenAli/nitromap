@@ -1,6 +1,7 @@
 package dev.nitromap.http;
 
 import com.sun.net.httpserver.HttpExchange;
+import dev.nitromap.query.BinaryRowStream;
 
 import java.io.IOException;
 import java.net.URLDecoder;
@@ -38,6 +39,12 @@ final class HttpSupport {
 
     static void binary(HttpExchange exchange, byte[] value) throws IOException {
         send(exchange, 200, "application/octet-stream", value);
+    }
+
+    static void rows(HttpExchange exchange, Iterable<Map<String, Object>> rows) throws IOException {
+        exchange.getResponseHeaders().set("Content-Type", "application/x-nitromap-rows");
+        exchange.sendResponseHeaders(200, 0);
+        new BinaryRowStream().write(exchange.getResponseBody(), rows);
     }
 
     static void empty(HttpExchange exchange, int status) throws IOException {

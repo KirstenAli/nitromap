@@ -19,11 +19,11 @@ final class Projector {
 
     private List<Map<String, Object>> plain(List<Row> rows) {
         List<Map<String, Object>> result = new ArrayList<>(rows.size());
-        rows.forEach(row -> result.add(project(row)));
+        rows.forEach(row -> result.add(projectRow(row)));
         return result;
     }
 
-    private Map<String, Object> project(Row row) {
+    Map<String, Object> projectRow(Row row) {
         Map<String, Object> result = new LinkedHashMap<>();
         for (SelectItem item : query.select()) add(result, item, row);
         return result;

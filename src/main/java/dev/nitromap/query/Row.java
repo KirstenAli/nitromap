@@ -4,7 +4,7 @@ import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 
-final class Row {
+final class Row implements ValueRow {
 
     private final Map<String, TableRow> sources;
 
@@ -28,7 +28,8 @@ final class Row {
         return new Row(joined);
     }
 
-    Object read(ColumnRef column) {
+    @Override
+    public Object read(ColumnRef column) {
         return column.qualifier() == null ? readUnqualified(column.name()) : readQualified(column);
     }
 
