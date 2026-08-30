@@ -13,6 +13,12 @@ public final class Catalog {
         return this;
     }
 
+    /** Adds an opt-in secondary index to an existing NitroMap-backed table. */
+    public Catalog index(String table, String column) {
+        table(table).index(column);
+        return this;
+    }
+
     Table table(String name) {
         Table table = tables.get(normalize(name));
         if (table == null) throw new IllegalArgumentException("Unknown table: " + name);

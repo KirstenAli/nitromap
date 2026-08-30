@@ -6,7 +6,7 @@
   <img src="https://img.shields.io/badge/Java-17%2B-f97316?style=for-the-badge&amp;logo=openjdk&amp;logoColor=white" alt="Java 17 or newer">
   <img src="https://img.shields.io/badge/Maven-Build-c71a36?style=for-the-badge&amp;logo=apachemaven&amp;logoColor=white" alt="Built with Maven">
   <img src="https://img.shields.io/badge/Runtime_dependencies-0-16a34a?style=for-the-badge" alt="Zero runtime dependencies">
-  <img src="https://img.shields.io/badge/Tests-135_passed-2563eb?style=for-the-badge" alt="135 tests passed">
+  <img src="https://img.shields.io/badge/Tests-148_passed-2563eb?style=for-the-badge" alt="148 tests passed">
 </p>
 
 <p align="center">
@@ -56,7 +56,7 @@ NitroMap combines three useful surfaces without hiding how any of them work:
 - Serves one or many named maps through built-in Java networking.
 - Provides authorization and native HTTP filter hooks without an external web framework.
 - Has no runtime dependencies beyond the JDK.
-- Is verified by 135 correctness and integration tests plus five opt-in benchmark tests.
+- Is verified by 148 correctness and integration tests plus six opt-in benchmark tests.
 
 ## Architecture
 
@@ -278,11 +278,49 @@ The current parser supports:
 - `LIMIT`, including `LIMIT 0`.
 
 A join against the newly joined table's `_key` performs direct map lookups.
-Other equality joins build a temporary hash index. NitroMap never uses a nested
-loop join.
+Other equality joins use a configured secondary index when available, otherwise
+they build a temporary hash index. NitroMap never uses a nested loop join.
 
 Parsed queries are cached by SQL text, so repeated parameterized queries do not
 need to be parsed again.
+
+### Query optimization
+
+Simple equality predicates on a non-numeric `_key` use the map's direct lookup
+path instead of scanning its entries. The remaining predicate is still checked
+before projection. Numeric keys retain the scan path because SQL numeric
+equality spans Java number types:
+
+```sql
+SELECT c.name FROM customers c
+WHERE c._key = :customerId AND c.active = true
+```
+
+On that same simple-query path, `LIMIT 0` reads no rows. A positive `LIMIT`
+stops execution early when a query has no join, grouping, aggregation, or
+ordering that requires the complete input. Queries with
+`ORDER BY`, `GROUP BY`, aggregates, or joins retain the full execution path so
+their results remain correct.
+
+Secondary indexes are optional and are declared after their table:
+
+```java
+Catalog catalog = new Catalog()
+        .add("customers", customers, customerSchema)
+        .add("orders", orders, orderSchema)
+        .index("customers", "city")
+        .index("orders", "customerId");
+```
+
+An index accelerates equality filters on its base table and equality joins when
+the indexed column belongs to the joined table. It supports duplicate, numeric,
+and `NULL` values. Indexes require `NitroMap` data and stay current after
+`put`, `putAll`, both supported `remove` variants, and `removeAll`.
+
+Indexes are deliberately opt-in. Building one scans the map once, stores a
+key-to-value entry plus a bucket membership for each row, and adds work to
+supported mutations. Maps without an index keep the normal write path apart
+from one inactive-listener check.
 
 ## REST API
 
@@ -426,12 +464,18 @@ vary with the JVM, CPU, filesystem, thermal state, data shape, and contention.
 
 | Scenario | Median throughput | Median cost |
 |---|---:|---:|
-| In-memory `get` | 279.4 million ops/s | 3.6 ns/op |
-| In-memory `put` | 124.2 million ops/s | 8.1 ns/op |
-| Persistent `put` enqueue | 68.3 million ops/s | 14.6 ns/op |
-| Persistent `put` plus durability checkpoint | 3.89 million ops/s | 257.1 ns/op |
-| Compacted log replay | 441,730 records/s | 2,263.8 ns/record |
-| Cached SQL query | 1,794 queries/s | 557.3 µs/query |
+| In-memory `get` | 276.2 million ops/s | 3.6 ns/op |
+| In-memory `put` | 130.5 million ops/s | 7.7 ns/op |
+| Persistent `put` enqueue | 50.7 million ops/s | 19.7 ns/op |
+| Persistent `put` plus durability checkpoint | 3.91 million ops/s | 255.6 ns/op |
+| Compacted log replay | 426,864 records/s | 2,342.7 ns/record |
+| Cached ordered SQL query | 1,854 queries/s | 539.3 µs/query |
+| Direct `_key` query | 980,977 queries/s | 1.019 µs/query |
+| Secondary-index query | 914,571 queries/s | 1.093 µs/query |
+| Full-scan equality query | 568 queries/s | 1,760.9 µs/query |
+| Early `LIMIT` query | 768,172 queries/s | 1.302 µs/query |
+| Plain row `put` | 70.3 million ops/s | 14.2 ns/op |
+| Secondary-indexed row `put` | 10.2 million ops/s | 98.3 ns/op |
 
 The map benchmarks rotate through 65,536 hot keys on one application thread.
 The persistence scenario performs 500,000 updates while the background writer
@@ -439,6 +483,12 @@ is active; the durability figure includes the final `flush()`. Replay loads
 50,000 compacted records. The query scenario scans 10,000 rows, filters roughly
 half, orders the result, and applies `LIMIT 100` using an already-cached parse
 plan.
+
+The access-path scenarios query 50,000 uniquely keyed rows. The indexed and
+full-scan scenarios execute the same equality predicate; on this run the index
+delivered roughly 1,610 times more queries per second. The write comparison
+rotates through the same 50,000 keys and shows the cost of maintaining one
+unique-value secondary index.
 
 These are lightweight project benchmarks rather than a substitute for JMH or
 an application-specific load test. Run the profile on target hardware before
@@ -499,6 +549,9 @@ current boundaries are deliberate:
 - A persistence directory should be opened by only one NitroMap instance at a
   time. Cross-process file locking is not implemented yet.
 - Queries are not transactional and may observe concurrent changes.
+- Secondary indexes follow the supported mutation methods above. Inherited
+  `replace`, `compute`, `merge`, `clear`, and collection-view changes bypass
+  both persistence and index maintenance.
 - Aggregation currently supports `COUNT(*)` only.
 - Joins are inner equality joins; outer joins and arbitrary join expressions are
   not supported.
@@ -507,15 +560,9 @@ Keeping these guarantees explicit lets the implementation stay compact and
 makes it clear where future capabilities can be added without compromising the
 fast common path.
 
-## Roadmap
-
-- [ ] Optimize SQL execution with direct `_key` predicate lookups, safe early
-  `LIMIT` handling, and optional secondary indexes where benchmarks justify
-  their memory and write costs.
-
 ## Building and testing
 
-Run the 135 correctness and integration tests:
+Run the 148 correctness and integration tests:
 
 ```shell
 mvn test
@@ -533,7 +580,7 @@ Install the current snapshot into your local Maven repository:
 mvn install
 ```
 
-Run the five opt-in benchmark tests:
+Run the six opt-in benchmark tests:
 
 ```shell
 mvn -Pbenchmark test
@@ -543,9 +590,11 @@ The correctness suite covers map semantics, convenience factories, shutdown
 lifecycle, persisted writes and removals, restart recovery, torn and invalid
 records, background-writer failures, compaction failures and races, concurrency,
 codecs, SQL parsing and execution, join strategies, grouping, ordering,
-validation, binary HTTP batches, authorization, filters, JSON encoding, and
+validation, binary HTTP batches, authorization, filters, JSON encoding,
 live REST requests, named-map routing, and heterogeneous codecs against a
-temporary local server.
+temporary local server. Query tests cover direct access paths, early limits,
+index maintenance, concurrent writes, numeric and null values, and indexed
+joins.
 
 ## Project layout
 

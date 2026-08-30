@@ -28,9 +28,19 @@ final class Joiner {
     }
 
     private List<Row> indexed(List<Row> rows, Source source, Table table, JoinColumns columns) {
+        if (table.indexed(columns.joined().name()))
+            return maintained(rows, source, table, columns);
         Map<Object, List<TableRow>> index = index(table, columns.joined());
         List<Row> joined = new ArrayList<>();
         for (Row row : rows) addAll(joined, row, source.alias(), index.get(row.read(columns.existing())));
+        return joined;
+    }
+
+    private List<Row> maintained(List<Row> rows, Source source,
+                                 Table table, JoinColumns columns) {
+        List<Row> joined = new ArrayList<>();
+        for (Row row : rows) addAll(joined, row, source.alias(),
+                table.lookup(columns.joined().name(), row.read(columns.existing())));
         return joined;
     }
 

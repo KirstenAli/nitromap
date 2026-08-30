@@ -8,9 +8,13 @@ import java.io.IOException;
 import java.io.Serial;
 import java.io.UncheckedIOException;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 
 /**
  * A concurrent map with asynchronous, batched persistence.
@@ -24,6 +28,7 @@ public class NitroMap<K, V> extends ConcurrentHashMap<K, V> implements AutoClose
     private static final long serialVersionUID = 1L;
 
     private final transient LogStore<K, V> store;
+    private transient volatile List<Consumer<K>> mutationListeners;
     private transient boolean closed;
 
     /** Opens a persistent UTF-8 string map with best-effort shutdown handling. */
@@ -76,7 +81,7 @@ public class NitroMap<K, V> extends ConcurrentHashMap<K, V> implements AutoClose
     @Override
     public V put(K key, V value) {
         V previous = super.put(key, value);
-        if (store != null) store.mark(key);
+        changed(key);
         return previous;
     }
 
@@ -84,6 +89,7 @@ public class NitroMap<K, V> extends ConcurrentHashMap<K, V> implements AutoClose
     public void putAll(Map<? extends K, ? extends V> entries) {
         super.putAll(entries);
         if (store != null) store.markAll(entries.keySet());
+        notifyMutations(entries.keySet());
     }
 
     @Override
@@ -119,6 +125,14 @@ public class NitroMap<K, V> extends ConcurrentHashMap<K, V> implements AutoClose
         if (store != null) store.compact();
     }
 
+    /** Registers a lightweight mutation observer for derived data structures. */
+    public synchronized void onMutation(Consumer<K> listener) {
+        List<Consumer<K>> listeners = mutationListeners == null
+                ? new ArrayList<>() : new ArrayList<>(mutationListeners);
+        listeners.add(Objects.requireNonNull(listener));
+        mutationListeners = List.copyOf(listeners);
+    }
+
     @Override
     public synchronized void close() throws IOException {
         if (store == null || closed) return;
@@ -145,7 +159,26 @@ public class NitroMap<K, V> extends ConcurrentHashMap<K, V> implements AutoClose
 
     @SuppressWarnings("unchecked")
     private void markRemoved(Object key) {
-        if (store != null) store.mark((K) key);
+        changed((K) key);
+    }
+
+    private void changed(K key) {
+        if (store != null) store.mark(key);
+        notifyMutation(key);
+    }
+
+    private void notifyMutations(Iterable<? extends K> keys) {
+        List<Consumer<K>> listeners = mutationListeners;
+        if (listeners != null) keys.forEach(key -> notifyMutation(listeners, key));
+    }
+
+    private void notifyMutation(K key) {
+        List<Consumer<K>> listeners = mutationListeners;
+        if (listeners != null) notifyMutation(listeners, key);
+    }
+
+    private void notifyMutation(List<Consumer<K>> listeners, K key) {
+        listeners.forEach(listener -> listener.accept(key));
     }
 
     private static <K, V> NitroMap<K, V> managed(NitroMap<K, V> map) {

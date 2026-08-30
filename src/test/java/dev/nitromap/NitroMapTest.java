@@ -94,4 +94,39 @@ class NitroMapTest {
         assertFalse(map.removeAll(Set.of()));
         assertEquals(1, map.size());
     }
+
+    @Test
+    void reportsSupportedMutationsToObservers() {
+        NitroMap<String, Integer> map = new NitroMap<>();
+        MutationProbe probe = new MutationProbe();
+        map.onMutation(probe::record);
+        mutate(map);
+        assertEquals(Set.of("first", "second", "third"), probe.keys());
+        assertEquals(4, probe.calls());
+    }
+
+    private void mutate(NitroMap<String, Integer> map) {
+        map.put("first", 1);
+        map.putAll(Map.of("second", 2, "third", 3));
+        map.remove("second");
+    }
+
+    private static final class MutationProbe {
+
+        private final Set<String> keys = ConcurrentHashMap.newKeySet();
+        private int calls;
+
+        void record(String key) {
+            keys.add(key);
+            calls++;
+        }
+
+        Set<String> keys() {
+            return keys;
+        }
+
+        int calls() {
+            return calls;
+        }
+    }
 }

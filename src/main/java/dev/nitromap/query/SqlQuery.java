@@ -11,6 +11,11 @@ record SqlQuery(List<SelectItem> select, Source from, List<JoinSpec> joins,
         return !groups.isEmpty() || select.stream().anyMatch(SelectItem::aggregate);
     }
 
+    boolean earlyLimit() {
+        return limit < Integer.MAX_VALUE
+                && joins.isEmpty() && !grouped() && orders.isEmpty();
+    }
+
     String orderLabel(String requested) {
         return select.stream().filter(item -> item.matches(requested)).findFirst()
                 .map(SelectItem::label).orElse(requested);

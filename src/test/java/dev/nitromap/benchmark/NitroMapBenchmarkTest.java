@@ -27,6 +27,10 @@ class NitroMapBenchmarkTest {
     private static final int PERSISTENT_WRITES = 500_000;
     private static final int QUERY_ROWS = 10_000;
     private static final int QUERIES = 100;
+    private static final int LOOKUP_ROWS = 50_000;
+    private static final int LOOKUP_QUERIES = 5_000;
+    private static final int SCAN_QUERIES = 100;
+    private static final int INDEX_WRITES = 500_000;
     private static final int REPLAY_ROWS = 50_000;
     private static final int WARMUPS = 2;
     private static final int SAMPLES = 5;
@@ -67,6 +71,17 @@ class NitroMapBenchmarkTest {
     void benchmarksCachedQueries() throws Exception {
         QueryEngine engine = queryEngine();
         report(benchmark("Cached SQL query", "queries", QUERIES, () -> queries(engine)));
+    }
+
+    @Test
+    void benchmarksQueryAccessPaths() throws Exception {
+        QueryBench bench = queryBench();
+        benchmarkKeyQueries(bench.direct());
+        benchmarkIndexedQueries(bench.indexed());
+        benchmarkScannedQueries(bench.scanned());
+        benchmarkLimitedQueries(bench.direct());
+        benchmarkPlainRowWrites(bench.plainRows(), bench.keys());
+        benchmarkIndexedRowWrites(bench.indexedRows(), bench.keys());
     }
 
     @Test
@@ -172,6 +187,98 @@ class NitroMapBenchmarkTest {
         for (int run = 0; run < QUERIES; run++) blackhole += engine.query(sql, Map.of("minimum", 5_000)).size();
     }
 
+    private QueryBench queryBench() {
+        String[] keys = lookupKeys();
+        NitroMap<String, BenchRow> rows = lookupRows(keys);
+        NitroMap<String, BenchRow> indexedRows = lookupRows(keys);
+        Schema<BenchRow> schema = lookupSchema();
+        return new QueryBench(engine(rows, schema), indexed(indexedRows, schema),
+                engine(rows, schema), rows, indexedRows, keys);
+    }
+
+    private NitroMap<String, BenchRow> lookupRows(String[] keys) {
+        NitroMap<String, BenchRow> rows = new NitroMap<>(LOOKUP_ROWS);
+        for (int key = 0; key < LOOKUP_ROWS; key++) rows.put(keys[key], new BenchRow(key));
+        return rows;
+    }
+
+    private String[] lookupKeys() {
+        String[] keys = new String[LOOKUP_ROWS];
+        for (int key = 0; key < keys.length; key++) keys[key] = "key-" + key;
+        return keys;
+    }
+
+    private Schema<BenchRow> lookupSchema() {
+        return Schema.<BenchRow>builder().column("score", BenchRow::score).build();
+    }
+
+    private QueryEngine engine(NitroMap<String, BenchRow> rows, Schema<BenchRow> schema) {
+        return new QueryEngine(new Catalog().add("rows", rows, schema));
+    }
+
+    private QueryEngine indexed(NitroMap<String, BenchRow> rows, Schema<BenchRow> schema) {
+        return new QueryEngine(new Catalog().add("rows", rows, schema)
+                .index("rows", "score"));
+    }
+
+    private void benchmarkKeyQueries(QueryEngine engine) throws Exception {
+        report(benchmark("Direct _key query", "queries", LOOKUP_QUERIES,
+                () -> keyQueries(engine)));
+    }
+
+    private void benchmarkIndexedQueries(QueryEngine engine) throws Exception {
+        report(benchmark("Indexed query", "queries", LOOKUP_QUERIES,
+                () -> valueQueries(engine, LOOKUP_QUERIES)));
+    }
+
+    private void benchmarkScannedQueries(QueryEngine engine) throws Exception {
+        report(benchmark("Full-scan query", "queries", SCAN_QUERIES,
+                () -> valueQueries(engine, SCAN_QUERIES)));
+    }
+
+    private void benchmarkLimitedQueries(QueryEngine engine) throws Exception {
+        report(benchmark("Early LIMIT query", "queries", LOOKUP_QUERIES,
+                () -> limitedQueries(engine)));
+    }
+
+    private void benchmarkPlainRowWrites(NitroMap<String, BenchRow> rows,
+                                         String[] keys) throws Exception {
+        report(benchmark("Plain row put", "ops", INDEX_WRITES,
+                () -> rowWrites(rows, keys)));
+    }
+
+    private void benchmarkIndexedRowWrites(NitroMap<String, BenchRow> rows,
+                                           String[] keys) throws Exception {
+        report(benchmark("Secondary-indexed put", "ops", INDEX_WRITES,
+                () -> rowWrites(rows, keys)));
+    }
+
+    private void keyQueries(QueryEngine engine) {
+        String sql = "SELECT r.score FROM rows r WHERE r._key = :key";
+        for (int run = 0; run < LOOKUP_QUERIES; run++)
+            blackhole += engine.query(sql, Map.of("key", "key-" + run)).size();
+    }
+
+    private void valueQueries(QueryEngine engine, int count) {
+        String sql = "SELECT r.score FROM rows r WHERE r.score = :score";
+        for (int run = 0; run < count; run++)
+            blackhole += engine.query(sql, Map.of("score", run)).size();
+    }
+
+    private void limitedQueries(QueryEngine engine) {
+        String sql = "SELECT r.score FROM rows r LIMIT 10";
+        for (int run = 0; run < LOOKUP_QUERIES; run++)
+            blackhole += engine.query(sql).size();
+    }
+
+    private void rowWrites(NitroMap<String, BenchRow> rows, String[] keys) {
+        for (int run = 0; run < INDEX_WRITES; run++) {
+            int key = run % LOOKUP_ROWS;
+            rows.put(keys[key], new BenchRow(run + LOOKUP_ROWS));
+        }
+        blackhole = rows.size();
+    }
+
     private void prepareReplayLog() throws Exception {
         try (NitroMap<String, String> map = persistentMap(directory)) {
             map.putAll(entries(REPLAY_ROWS));
@@ -216,6 +323,11 @@ class NitroMapBenchmarkTest {
     }
 
     private record BenchRow(int score) {
+    }
+
+    private record QueryBench(QueryEngine direct, QueryEngine indexed, QueryEngine scanned,
+                              NitroMap<String, BenchRow> plainRows,
+                              NitroMap<String, BenchRow> indexedRows, String[] keys) {
     }
 
     private record PersistentSample(long enqueued, long durable) {

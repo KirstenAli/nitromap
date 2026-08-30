@@ -17,7 +17,9 @@ final class QueryExecutor {
     }
 
     QueryResult execute() {
-        List<Row> rows = scan(query.from());
+        RowSource source = new RowSource(catalog, query, parameters);
+        if (query.earlyLimit()) return early(source);
+        List<Row> rows = source.rows();
         for (JoinSpec join : query.joins()) rows = new Joiner(catalog).join(rows, join);
         rows.removeIf(row -> !query.where().test(row, parameters));
         List<Map<String, Object>> result = new Projector(query).project(rows);
@@ -25,11 +27,9 @@ final class QueryExecutor {
         return new QueryResult(limit(result));
     }
 
-    private List<Row> scan(Source source) {
-        Table table = catalog.table(source.table());
-        List<Row> rows = new ArrayList<>(table.size());
-        for (var entry : table.entries()) rows.add(Row.of(source.alias(), table, entry));
-        return rows;
+    private QueryResult early(RowSource source) {
+        List<Row> rows = source.matching(query.where(), parameters, query.limit());
+        return new QueryResult(new Projector(query).project(rows));
     }
 
     private List<Map<String, Object>> limit(List<Map<String, Object>> rows) {

@@ -27,4 +27,18 @@ final class Values {
         if (right == null) return -1;
         return compare(left, right);
     }
+
+    static Object indexKey(Object value) {
+        if (value == null) return NullKey.INSTANCE;
+        if (value instanceof Number number)
+            return new NumberKey(Double.doubleToLongBits(number.doubleValue()));
+        return value;
+    }
+
+    private record NumberKey(long bits) {
+    }
+
+    private enum NullKey {
+        INSTANCE
+    }
 }

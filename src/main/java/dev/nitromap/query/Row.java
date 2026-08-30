@@ -13,8 +13,12 @@ final class Row {
     }
 
     static Row of(String alias, Table table, Map.Entry<?, ?> entry) {
+        return of(alias, new TableRow(table, entry.getKey(), entry.getValue()));
+    }
+
+    static Row of(String alias, TableRow row) {
         Map<String, TableRow> sources = new LinkedHashMap<>();
-        sources.put(normalize(alias), new TableRow(table, entry.getKey(), entry.getValue()));
+        sources.put(normalize(alias), row);
         return new Row(sources);
     }
 
