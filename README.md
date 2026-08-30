@@ -12,7 +12,6 @@
 <p align="center">
   <a href="#why-nitromap">Why NitroMap</a> &bull;
   <a href="#quick-start">Quick start</a> &bull;
-  <a href="#memory-bounded-eviction">Eviction</a> &bull;
   <a href="#sql-like-queries">SQL</a> &bull;
   <a href="#rest-api">REST API</a> &bull;
   <a href="#performance-benchmarks">Benchmarks</a>
@@ -128,34 +127,6 @@ snapshot are appended after compaction, so they are not lost.
 Compaction is synchronous and manually triggered in this version. It is best
 run when log growth justifies the temporary disk and serialization work, not on
 every write.
-
-## Memory-bounded eviction
-
-NitroMap keeps every entry by default. Applications that can safely discard
-records may enable destructive background eviction with an approximate entry
-limit:
-
-```java
-NitroMap<String, String> cache = NitroMap
-        .strings("data/cache")
-        .evictAt(100_000);
-```
-
-When the map grows beyond the limit, one daemon worker removes entries using
-the map's unordered traversal until roughly 90% remain. The application write
-that crossed the limit only schedules this work. Evictions use the normal
-conditional removal path, so maintained indexes are updated and persistent
-maps write tombstones asynchronously.
-
-This is deletion, not disk tiering. An evicted entry disappears from `get`,
-queries, REST endpoints, and persisted recovery. `flush()` waits for the current
-eviction pass before making its tombstones durable.
-
-The limit counts entries rather than Java object bytes, and a large `putAll` or
-a writer that outruns the worker can exceed it temporarily. Choose the limit
-from measured record sizes and leave heap headroom for indexes, persistence
-buffers, and the rest of the application. Calling `evictAt` again replaces the
-previous limit. Maps that never call it retain the normal no-eviction behavior.
 
 ## Quick start
 
@@ -353,6 +324,34 @@ Indexes are deliberately opt-in. Building one scans the map once, stores a
 key-to-value entry plus a bucket membership for each row, and adds work to
 supported mutations. Maps without an index keep the normal write path apart
 from one inactive-listener check.
+
+## Memory-bounded eviction
+
+NitroMap keeps every entry by default. Applications that can safely discard
+records may enable destructive background eviction with an approximate entry
+limit:
+
+```java
+NitroMap<String, String> cache = NitroMap
+        .strings("data/cache")
+        .evictAt(100_000);
+```
+
+When the map grows beyond the limit, one daemon worker removes entries using
+the map's unordered traversal until roughly 90% remain. The application write
+that crossed the limit only schedules this work. Evictions use the normal
+conditional removal path, so maintained indexes are updated and persistent
+maps write tombstones asynchronously.
+
+This is deletion, not disk tiering. An evicted entry disappears from `get`,
+queries, REST endpoints, and persisted recovery. `flush()` waits for the current
+eviction pass before making its tombstones durable.
+
+The limit counts entries rather than Java object bytes, and a large `putAll` or
+a writer that outruns the worker can exceed it temporarily. Choose the limit
+from measured record sizes and leave heap headroom for indexes, persistence
+buffers, and the rest of the application. Calling `evictAt` again replaces the
+previous limit. Maps that never call it retain the normal no-eviction behavior.
 
 ## REST API
 
