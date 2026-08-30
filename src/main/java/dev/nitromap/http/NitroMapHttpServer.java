@@ -9,29 +9,33 @@ import dev.nitromap.query.QueryEngine;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.util.Base64;
 import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public final class NitroMapHttpServer<K, V> implements AutoCloseable {
 
-    private final Codec<K> keys;
+    private final MapRegistry maps;
     private final HttpServer server;
     private final HttpContext context;
     private final ExecutorService executor;
 
     private NitroMapHttpServer(Builder<K, V> builder) throws IOException {
-        keys = builder.keys;
+        maps = builder.maps.snapshot();
         server = HttpServer.create(builder.address, builder.backlog);
         executor = Executors.newFixedThreadPool(builder.threads);
         server.setExecutor(executor);
-        context = server.createContext("/", builder.handler());
+        context = server.createContext("/",
+                new RestHandler(maps, builder.queries, builder.authorizer));
     }
 
     public static <K, V> Builder<K, V> builder(
             NitroMap<K, V> map, Codec<K> keys, Codec<V> values) {
         return new Builder<>(map, keys, values);
+    }
+
+    public static Builder<Object, Object> builder() {
+        return new Builder<>();
     }
 
     public NitroMapHttpServer<K, V> addFilter(Filter filter) {
@@ -49,8 +53,11 @@ public final class NitroMapHttpServer<K, V> implements AutoCloseable {
     }
 
     public String entryPath(K key) throws IOException {
-        String encoded = Base64.getUrlEncoder().withoutPadding().encodeToString(keys.encode(key));
-        return "/entries/" + encoded;
+        return maps.rootPath(key);
+    }
+
+    public String entryPath(String map, Object key) throws IOException {
+        return maps.namedPath(map, key);
     }
 
     @Override
@@ -61,9 +68,7 @@ public final class NitroMapHttpServer<K, V> implements AutoCloseable {
 
     public static final class Builder<K, V> {
 
-        private final NitroMap<K, V> map;
-        private final Codec<K> keys;
-        private final Codec<V> values;
+        private final MapRegistry maps = new MapRegistry();
 
         private InetSocketAddress address = new InetSocketAddress(8080);
         private RequestAuthorizer authorizer = RequestAuthorizer.ALLOW_ALL;
@@ -71,10 +76,20 @@ public final class NitroMapHttpServer<K, V> implements AutoCloseable {
         private int backlog;
         private int threads = Math.max(2, Runtime.getRuntime().availableProcessors());
 
+        private Builder() {
+        }
+
         private Builder(NitroMap<K, V> map, Codec<K> keys, Codec<V> values) {
-            this.map = Objects.requireNonNull(map);
-            this.keys = Objects.requireNonNull(keys);
-            this.values = Objects.requireNonNull(values);
+            maps.root(Objects.requireNonNull(map), Objects.requireNonNull(keys),
+                    Objects.requireNonNull(values));
+        }
+
+        public <MK, MV> Builder<K, V> map(
+                String name, NitroMap<MK, MV> map,
+                Codec<MK> keys, Codec<MV> values) {
+            maps.add(name, Objects.requireNonNull(map), Objects.requireNonNull(keys),
+                    Objects.requireNonNull(values));
+            return this;
         }
 
         public Builder<K, V> port(int port) {
@@ -110,10 +125,6 @@ public final class NitroMapHttpServer<K, V> implements AutoCloseable {
 
         public NitroMapHttpServer<K, V> build() throws IOException {
             return new NitroMapHttpServer<>(this);
-        }
-
-        private RestHandler<K, V> handler() {
-            return new RestHandler<>(map, keys, values, queries, authorizer);
         }
     }
 }

@@ -6,7 +6,7 @@
   <img src="https://img.shields.io/badge/Java-17%2B-f97316?style=for-the-badge&amp;logo=openjdk&amp;logoColor=white" alt="Java 17 or newer">
   <img src="https://img.shields.io/badge/Maven-Build-c71a36?style=for-the-badge&amp;logo=apachemaven&amp;logoColor=white" alt="Built with Maven">
   <img src="https://img.shields.io/badge/Runtime_dependencies-0-16a34a?style=for-the-badge" alt="Zero runtime dependencies">
-  <img src="https://img.shields.io/badge/Tests-126_passed-2563eb?style=for-the-badge" alt="126 tests passed">
+  <img src="https://img.shields.io/badge/Tests-135_passed-2563eb?style=for-the-badge" alt="135 tests passed">
 </p>
 
 <p align="center">
@@ -53,10 +53,10 @@ NitroMap combines three useful surfaces without hiding how any of them work:
 - Atomically compacts historical records into the current map state.
 - Uses explicit application codecs rather than Java object serialization.
 - Supports selection, joins, filtering, grouping, ordering, limits, and named parameters.
-- Serves CRUD, batch, query, flush, compact, and health routes through built-in Java networking.
+- Serves one or many named maps through built-in Java networking.
 - Provides authorization and native HTTP filter hooks without an external web framework.
 - Has no runtime dependencies beyond the JDK.
-- Is verified by 126 correctness and integration tests plus five opt-in benchmark scenarios.
+- Is verified by 135 correctness and integration tests plus five opt-in benchmark tests.
 
 ## Architecture
 
@@ -303,34 +303,56 @@ NitroMapHttpServer<String, String> server = NitroMapHttpServer
         .start();
 ```
 
-The server and map have separate lifecycles. Closing the server stops accepting
-HTTP requests; closing the map flushes and closes persistence. Applications can
-keep both as fields and close them during normal application shutdown.
+To expose multiple maps on one port, start with the empty builder and give each
+map a URL-safe name. Every map keeps its own key and value codecs:
+
+```java
+var server = NitroMapHttpServer.builder()
+        .map("customers", customers, Utf8StringCodec.INSTANCE, customerJsonCodec)
+        .map("orders", orders, Utf8StringCodec.INSTANCE, orderJsonCodec)
+        .port(8080)
+        .queries(queries)
+        .authorize(authorizer)
+        .build()
+        .start();
+```
+
+Map names may contain letters, numbers, `.`, `_`, and `-`. A named map uses the
+prefix `/maps/{map}`; the original single-map builder keeps its shorter routes.
+Named routing resolves the map and its codecs with one immutable map lookup.
+
+The server and maps have separate lifecycles. Closing the server stops accepting
+HTTP requests; closing each map flushes and closes its persistence. Applications
+can keep them as fields and close them during normal application shutdown.
 
 ### Endpoints
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/health` | Return server status and current map size. |
-| `GET` | `/entries/{key}` | Read one value. |
-| `PUT` | `/entries/{key}` | Put one value. |
-| `DELETE` | `/entries/{key}` | Remove one value. |
-| `PUT` | `/entries` | Put a binary batch. |
-| `DELETE` | `/entries` | Remove a binary batch of keys. |
+| `GET` | `/health` | Return status and size; named servers also return map count. |
+| `GET` | `{prefix}/entries/{key}` | Read one value. |
+| `PUT` | `{prefix}/entries/{key}` | Put one value. |
+| `DELETE` | `{prefix}/entries/{key}` | Remove one value. |
+| `PUT` | `{prefix}/entries` | Put a binary batch. |
+| `DELETE` | `{prefix}/entries` | Remove a binary batch of keys. |
 | `POST` | `/query` | Execute a SQL-like query. |
-| `POST` | `/flush` | Wait until pending mutations are durable. |
-| `POST` | `/compact` | Compact the persistence log. |
+| `POST` | `{prefix}/flush` | Wait until that map's pending mutations are durable. |
+| `POST` | `{prefix}/compact` | Compact that map's persistence log. |
+
+For a single-map server, `{prefix}` is empty. For a named map such as
+`customers`, it is `/maps/customers`.
 
 Entry keys are URL-safe Base64 encodings of the key codec bytes. Use
-`server.entryPath(key)` to construct the correct path. A single `PUT` body and
+`server.entryPath(key)` for a single map or
+`server.entryPath("customers", key)` for a named map. A single `PUT` body and
 `GET` response contain the raw value codec bytes with content type
 `application/octet-stream`.
 
 Batch operations use four-byte, big-endian lengths followed by codec bytes:
 
 ```text
-PUT /entries:    [key length][key][value length][value] ...
-DELETE /entries: [key length][key] ...
+PUT {prefix}/entries:    [key length][key][value length][value] ...
+DELETE {prefix}/entries: [key length][key] ...
 ```
 
 `BinaryBatchCodec` encodes and decodes these request bodies without requiring a
@@ -355,6 +377,8 @@ SELECT c.name FROM customers c WHERE c.city = :city ORDER BY c.name
 The response is JSON in the form `{"rows":[...]}`. Query parameters recognize
 `null`, booleans, integers, and decimal numbers; other values remain strings.
 Configure a `QueryEngine` with `.queries(queries)` to enable this endpoint.
+Named HTTP maps and SQL catalog entries are configured separately, so the same
+map can use a different public route name and query table name when needed.
 
 The authorization hook runs before every route. It defaults to allow-all, so a
 network-facing deployment should supply `.authorize(...)`. Native Java HTTP
@@ -491,7 +515,7 @@ fast common path.
 
 ## Building and testing
 
-Run the 126 correctness and integration tests:
+Run the 135 correctness and integration tests:
 
 ```shell
 mvn test
@@ -509,7 +533,7 @@ Install the current snapshot into your local Maven repository:
 mvn install
 ```
 
-Run only the five opt-in performance scenarios:
+Run the five opt-in benchmark tests:
 
 ```shell
 mvn -Pbenchmark test
@@ -520,7 +544,8 @@ lifecycle, persisted writes and removals, restart recovery, torn and invalid
 records, background-writer failures, compaction failures and races, concurrency,
 codecs, SQL parsing and execution, join strategies, grouping, ordering,
 validation, binary HTTP batches, authorization, filters, JSON encoding, and
-live REST requests against a temporary local server.
+live REST requests, named-map routing, and heterogeneous codecs against a
+temporary local server.
 
 ## Project layout
 
