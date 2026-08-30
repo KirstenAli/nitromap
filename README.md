@@ -491,6 +491,12 @@ Keeping these guarantees explicit lets the implementation stay compact and
 makes it clear where future capabilities can be added without compromising the
 fast common path.
 
+## Roadmap
+
+- [ ] Optimize SQL execution with direct `_key` predicate lookups, safe early
+  `LIMIT` handling, and optional secondary indexes where benchmarks justify
+  their memory and write costs.
+
 ## Building and testing
 
 Run the 120 correctness and integration tests:
