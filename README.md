@@ -32,6 +32,35 @@ remains intentionally small, explicit, and understandable.
 suited to embedded applications that benefit from fast in-memory access and
 asynchronous persistence.
 
+## Table of contents
+
+- [Why NitroMap](#why-nitromap)
+  - [Highlights](#highlights)
+- [Architecture](#architecture)
+- [How persistence works](#how-persistence-works)
+- [Log compaction](#log-compaction)
+- [Quick start](#quick-start)
+- [Codecs](#codecs)
+- [SQL-like queries](#sql-like-queries)
+  - [Supported query subset](#supported-query-subset)
+  - [Query optimization](#query-optimization)
+- [Memory-bounded eviction](#memory-bounded-eviction)
+- [REST API](#rest-api)
+  - [Endpoints](#endpoints)
+- [Where NitroMap fits](#where-nitromap-fits)
+- [Performance benchmarks](#performance-benchmarks)
+  - [Reference run](#reference-run)
+- [Design principles](#design-principles)
+  - [Keep the write path short](#keep-the-write-path-short)
+  - [Prefer sequential I/O](#prefer-sequential-io)
+  - [Persist state, not every intermediate event](#persist-state-not-every-intermediate-event)
+  - [Make serialization explicit](#make-serialization-explicit)
+  - [Keep storage and querying separate](#keep-storage-and-querying-separate)
+  - [Be honest about consistency](#be-honest-about-consistency)
+- [Scope and current boundaries](#scope-and-current-boundaries)
+- [Building and testing](#building-and-testing)
+- [Project layout](#project-layout)
+
 ## Why NitroMap
 
 NitroMap combines three useful surfaces without hiding how any of them work:
