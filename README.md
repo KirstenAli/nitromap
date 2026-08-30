@@ -7,6 +7,7 @@
   <img src="https://img.shields.io/badge/Maven-Build-c71a36?style=for-the-badge&amp;logo=apachemaven&amp;logoColor=white" alt="Built with Maven">
   <img src="https://img.shields.io/badge/Runtime_dependencies-0-16a34a?style=for-the-badge" alt="Zero runtime dependencies">
   <img src="https://img.shields.io/badge/Tests-209-2563eb?style=for-the-badge" alt="209 correctness and integration tests">
+  <img src="https://img.shields.io/badge/License-Apache_2.0-9333ea?style=for-the-badge" alt="Apache License 2.0">
 </p>
 
 <p align="center">
@@ -64,7 +65,9 @@ asynchronous persistence.
   - [Be honest about consistency](#be-honest-about-consistency)
 - [Scope and current boundaries](#scope-and-current-boundaries)
 - [Building and testing](#building-and-testing)
+- [Publishing to Maven Central](#publishing-to-maven-central)
 - [Project layout](#project-layout)
+- [License](#license)
 
 ## Why NitroMap
 
@@ -167,16 +170,19 @@ every write.
 
 ## Quick start
 
-Build and install the current snapshot locally with `mvn install`, then use the
-following Maven coordinates:
+NitroMap 0.1.0 uses the following Maven coordinates. Until the first Central
+release is published, run `mvn install` to make it available locally:
 
 ```xml
 <dependency>
-    <groupId>dev.nitromap</groupId>
+    <groupId>io.github.kirstenali</groupId>
     <artifactId>nitromap</artifactId>
-    <version>0.1.0-SNAPSHOT</version>
+    <version>0.1.0</version>
 </dependency>
 ```
+
+The Maven `groupId` identifies the published artifact. NitroMap's Java packages
+remain under `dev.nitromap`, so existing imports do not change.
 
 Create a persistent UTF-8 string map in one line:
 
@@ -820,7 +826,7 @@ Compile, test, and package the JAR:
 mvn verify
 ```
 
-Install the current snapshot into your local Maven repository:
+Install the current version into your local Maven repository:
 
 ```shell
 mvn install
@@ -844,6 +850,57 @@ bounded skew joins, and spill cleanup. Query tests also cover direct access
 paths, early limits, index maintenance, concurrent writes, numeric and null
 values, indexed joins, background eviction, concurrent eviction, and persisted
 eviction tombstones.
+
+## Publishing to Maven Central
+
+The `central` profile attaches source and Javadoc JARs, signs every published
+artifact with GPG, and uploads the release through Sonatype's Central Publishing
+Plugin. It does not publish automatically: a validated deployment waits for a
+final review in the Central Portal.
+
+Before the first release:
+
+1. Sign in to [Maven Central](https://central.sonatype.com/) with the GitHub
+   account `KirstenAli` and confirm the `io.github.kirstenali` namespace.
+2. Generate a Central user token and expose its username and password to Maven
+   through environment variables in `~/.m2/settings.xml`:
+
+   ```xml
+   <settings>
+       <servers>
+           <server>
+               <id>central</id>
+               <username>${env.CENTRAL_USERNAME}</username>
+               <password>${env.CENTRAL_PASSWORD}</password>
+           </server>
+       </servers>
+   </settings>
+   ```
+
+3. Create a GPG signing key if needed and publish its public key:
+
+   ```shell
+   gpg --full-generate-key
+   gpg --list-secret-keys --keyid-format=long
+   gpg --keyserver keyserver.ubuntu.com --send-keys YOUR_KEY_ID
+   ```
+
+Validate the complete release packaging without signing or uploading:
+
+```shell
+mvn -Pcentral -Dgpg.skip=true clean verify
+```
+
+When the version and Git state are ready, upload the signed release:
+
+```shell
+mvn -Pcentral clean deploy
+```
+
+Review the validated deployment at
+[central.sonatype.com/publishing](https://central.sonatype.com/publishing), then
+select **Publish**. Maven Central releases are immutable, so a published version
+number cannot be replaced.
 
 ## Project layout
 
@@ -869,3 +926,7 @@ src/test/java/dev/nitromap/
 NitroMap's direction is straightforward: keep the common path fast, make
 durability explicit, and add database-like capabilities only when they remain
 small enough to understand, measure, and trust.
+
+## License
+
+NitroMap is available under the [Apache License 2.0](LICENSE).
