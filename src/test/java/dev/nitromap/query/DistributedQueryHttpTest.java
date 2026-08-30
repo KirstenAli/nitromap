@@ -10,6 +10,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -30,10 +33,11 @@ class DistributedQueryHttpTest {
     private final List<NitroMap<?, ?>> maps = new ArrayList<>();
     private final List<NitroMapHttpServer<?, ?>> servers = new ArrayList<>();
     private DistributedQueryEngine engine;
+    private URI first;
 
     @BeforeEach
     void setUp() throws Exception {
-        URI first = start("a", Map.of("c1", new Customer("Ada", "London")),
+        first = start("a", Map.of("c1", new Customer("Ada", "London")),
                 Map.of("o2", new Order("c2", 20)));
         URI second = start("b", Map.of("c2", new Customer("Grace", "Paris")),
                 Map.of("o1", new Order("c1", 10)));
@@ -75,6 +79,15 @@ class DistributedQueryHttpTest {
         assertEquals(List.of(Map.of("name", "Grace")), query(sql, Map.of("key", "c2")));
     }
 
+    @Test
+    void keepsOrdinaryQueriesDisabledOnClusterOnlyNodes() throws Exception {
+        HttpRequest request = HttpRequest.newBuilder(first.resolve("/query"))
+                .header("X-Api-Key", "secret").POST(HttpRequest.BodyPublishers.ofString(
+                        "SELECT c.name FROM customers c")).build();
+        assertEquals(400, HttpClient.newHttpClient().send(request,
+                HttpResponse.BodyHandlers.discarding()).statusCode());
+    }
+
     private URI start(String name, Map<String, Customer> customers,
                       Map<String, Order> orders) throws Exception {
         NitroMap<String, Customer> customerMap = new NitroMap<>(customers);
@@ -82,7 +95,7 @@ class DistributedQueryHttpTest {
         QueryEngine queries = new QueryEngine(catalog(customerMap, orderMap));
         NitroMapHttpServer<Object, Object> server = NitroMapHttpServer.builder()
                 .map("customers", customerMap, STRINGS, CUSTOMERS)
-                .map("orders", orderMap, STRINGS, ORDERS).queries(queries)
+                .map("orders", orderMap, STRINGS, ORDERS).clusterQueries(queries)
                 .authorize(exchange -> "secret".equals(exchange.getRequestHeaders().getFirst("X-Api-Key")))
                 .port(0).threads(2).build().start();
         maps.add(customerMap);

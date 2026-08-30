@@ -164,6 +164,11 @@ class NitroMapHttpServerTest {
     }
 
     @Test
+    void keepsClusterRoutesDisabledForOrdinaryQueries() throws Exception {
+        assertEquals(404, request("GET", "/cluster/scan?table=entries&alias=e").statusCode());
+    }
+
+    @Test
     void supportsAuthorizationHooks() throws Exception {
         restart(exchange -> "secret".equals(exchange.getRequestHeaders().getFirst("X-Api-Key")));
         HttpResponse<byte[]> denied = request("GET", "/health");
@@ -192,6 +197,7 @@ class NitroMapHttpServerTest {
         assertThrows(IllegalArgumentException.class, () -> builder.threads(0));
         assertThrows(NullPointerException.class, () -> builder.authorize(null));
         assertThrows(NullPointerException.class, () -> builder.queries(null));
+        assertThrows(NullPointerException.class, () -> builder.clusterQueries(null));
     }
 
     private void restart(RequestAuthorizer authorizer) throws Exception {

@@ -6,7 +6,7 @@
   <img src="https://img.shields.io/badge/Java-17%2B-f97316?style=for-the-badge&amp;logo=openjdk&amp;logoColor=white" alt="Java 17 or newer">
   <img src="https://img.shields.io/badge/Maven-Build-c71a36?style=for-the-badge&amp;logo=apachemaven&amp;logoColor=white" alt="Built with Maven">
   <img src="https://img.shields.io/badge/Runtime_dependencies-0-16a34a?style=for-the-badge" alt="Zero runtime dependencies">
-  <img src="https://img.shields.io/badge/Tests-207-2563eb?style=for-the-badge" alt="207 correctness and integration tests">
+  <img src="https://img.shields.io/badge/Tests-209-2563eb?style=for-the-badge" alt="209 correctness and integration tests">
 </p>
 
 <p align="center">
@@ -94,7 +94,7 @@ NitroMap combines three useful surfaces without hiding how any of them work:
 - Serves one or many named maps through built-in Java networking.
 - Provides authorization and native HTTP filter hooks without an external web framework.
 - Has no runtime dependencies beyond the JDK.
-- Is verified by 207 correctness and integration tests plus six opt-in benchmark tests.
+- Is verified by 209 correctness and integration tests plus six opt-in benchmark tests.
 
 ## Architecture
 
@@ -469,7 +469,7 @@ try (var result = queries.query("""
 
 Every node catalog must declare every distributed table, using an empty local
 map when that node currently owns no rows for a table. The server enables the
-data-plane routes through `.queries(localQueryEngine)`.
+data-plane routes through `.clusterQueries(localQueryEngine)`.
 
 The execution path is intentionally bounded:
 
@@ -636,10 +636,14 @@ Named HTTP maps and SQL catalog entries are configured separately, so the same
 map can use a different public route name and query table name when needed.
 
 The `/cluster/*` routes are the internal data plane used by
-`DistributedQueryEngine`. They require `.queries(queries)`, use the same
+`DistributedQueryEngine`. They require `.clusterQueries(queries)`, use the same
 authorization hook as every other route, and stream NitroMap's typed binary row
 format rather than JSON. They should not be exposed publicly without
 authentication and transport security.
+
+`.queries(queries)` and `.clusterQueries(queries)` are independent. Configure
+only the first for ordinary `/query`, only the second for a cluster data node,
+or both when one server should provide both surfaces.
 
 The authorization hook runs before every route. It defaults to allow-all, so a
 network-facing deployment should supply `.authorize(...)`. Native Java HTTP
@@ -804,7 +808,7 @@ fast common path.
 
 ## Building and testing
 
-Run the 207 correctness and integration tests:
+Run the 209 correctness and integration tests:
 
 ```shell
 mvn test

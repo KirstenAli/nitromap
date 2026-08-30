@@ -26,7 +26,8 @@ public final class NitroMapHttpServer<K, V> implements AutoCloseable {
         executor = Executors.newFixedThreadPool(builder.threads);
         server.setExecutor(executor);
         context = server.createContext("/",
-                new RestHandler(maps, builder.queries, builder.authorizer));
+                new RestHandler(maps, builder.queries,
+                        builder.clusterQueries, builder.authorizer));
     }
 
     public static <K, V> Builder<K, V> builder(
@@ -73,6 +74,7 @@ public final class NitroMapHttpServer<K, V> implements AutoCloseable {
         private InetSocketAddress address = new InetSocketAddress(8080);
         private RequestAuthorizer authorizer = RequestAuthorizer.ALLOW_ALL;
         private QueryEngine queries;
+        private QueryEngine clusterQueries;
         private int backlog;
         private int threads = Math.max(2, Runtime.getRuntime().availableProcessors());
 
@@ -113,8 +115,15 @@ public final class NitroMapHttpServer<K, V> implements AutoCloseable {
             return this;
         }
 
+        /** Enables the ordinary JSON {@code POST /query} endpoint. */
         public Builder<K, V> queries(QueryEngine queries) {
             this.queries = Objects.requireNonNull(queries);
+            return this;
+        }
+
+        /** Enables the internal binary {@code /cluster/*} data-plane routes. */
+        public Builder<K, V> clusterQueries(QueryEngine queries) {
+            this.clusterQueries = Objects.requireNonNull(queries);
             return this;
         }
 

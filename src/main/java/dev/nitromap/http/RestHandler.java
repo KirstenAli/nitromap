@@ -13,12 +13,14 @@ final class RestHandler implements HttpHandler {
 
     private final MapRegistry maps;
     private final QueryEngine queries;
+    private final QueryEngine clusterQueries;
     private final RequestAuthorizer authorizer;
 
-    RestHandler(MapRegistry maps, QueryEngine queries,
+    RestHandler(MapRegistry maps, QueryEngine queries, QueryEngine clusterQueries,
                 RequestAuthorizer authorizer) {
         this.maps = maps;
         this.queries = queries;
+        this.clusterQueries = clusterQueries;
         this.authorizer = authorizer;
     }
 
@@ -46,11 +48,18 @@ final class RestHandler implements HttpHandler {
         String path = exchange.getRequestURI().getPath();
         if (path.equals("/health")) health(exchange);
         else if (path.equals("/query")) query(exchange);
-        else if (path.equals("/cluster/stream")) stream(exchange);
-        else if (path.equals("/cluster/scan")) scan(exchange);
-        else if (path.equals("/cluster/lookup")) lookup(exchange);
+        else if (cluster(exchange, path)) return;
         else if (maps.route(exchange, path)) return;
         else HttpSupport.error(exchange, 404, "Not found");
+    }
+
+    private boolean cluster(HttpExchange exchange, String path) throws IOException {
+        if (clusterQueries == null) return false;
+        if (path.equals("/cluster/stream")) stream(exchange);
+        else if (path.equals("/cluster/scan")) scan(exchange);
+        else if (path.equals("/cluster/lookup")) lookup(exchange);
+        else return false;
+        return true;
     }
 
     private void health(HttpExchange exchange) throws IOException {
@@ -67,22 +76,21 @@ final class RestHandler implements HttpHandler {
 
     private void stream(HttpExchange exchange) throws IOException {
         if (!method(exchange, "POST")) return;
-        requireQueries();
-        HttpSupport.rows(exchange, queries.stream(HttpSupport.text(exchange), HttpSupport.parameters(exchange)));
+        HttpSupport.rows(exchange, clusterQueries.stream(
+                HttpSupport.text(exchange), HttpSupport.parameters(exchange)));
     }
 
     private void scan(HttpExchange exchange) throws IOException {
         if (!method(exchange, "GET")) return;
-        requireQueries();
         Map<String, Object> values = HttpSupport.parameters(exchange);
-        HttpSupport.rows(exchange, queries.scan(required(values, "table"), required(values, "alias")));
+        HttpSupport.rows(exchange, clusterQueries.scan(
+                required(values, "table"), required(values, "alias")));
     }
 
     private void lookup(HttpExchange exchange) throws IOException {
         if (!method(exchange, "POST")) return;
-        requireQueries();
         Map<String, Object> values = HttpSupport.parameters(exchange);
-        Map<String, Object> row = queries.lookup(required(values, "table"),
+        Map<String, Object> row = clusterQueries.lookup(required(values, "table"),
                 required(values, "alias"), scalar(exchange));
         HttpSupport.rows(exchange, row == null ? java.util.List.of() : java.util.List.of(row));
     }
@@ -93,10 +101,6 @@ final class RestHandler implements HttpHandler {
         } catch (IOException exception) {
             throw new IllegalArgumentException("Invalid scalar key", exception);
         }
-    }
-
-    private void requireQueries() {
-        if (queries == null) throw new IllegalArgumentException("Query engine is not configured");
     }
 
     private String required(Map<String, Object> values, String name) {
