@@ -6,12 +6,13 @@
   <img src="https://img.shields.io/badge/Java-17%2B-f97316?style=for-the-badge&amp;logo=openjdk&amp;logoColor=white" alt="Java 17 or newer">
   <img src="https://img.shields.io/badge/Maven-Build-c71a36?style=for-the-badge&amp;logo=apachemaven&amp;logoColor=white" alt="Built with Maven">
   <img src="https://img.shields.io/badge/Runtime_dependencies-0-16a34a?style=for-the-badge" alt="Zero runtime dependencies">
-  <img src="https://img.shields.io/badge/Tests-148_passed-2563eb?style=for-the-badge" alt="148 tests passed">
+  <img src="https://img.shields.io/badge/Tests-155_passed-2563eb?style=for-the-badge" alt="155 tests passed">
 </p>
 
 <p align="center">
   <a href="#why-nitromap">Why NitroMap</a> &bull;
   <a href="#quick-start">Quick start</a> &bull;
+  <a href="#memory-bounded-eviction">Eviction</a> &bull;
   <a href="#sql-like-queries">SQL</a> &bull;
   <a href="#rest-api">REST API</a> &bull;
   <a href="#performance-benchmarks">Benchmarks</a>
@@ -47,6 +48,7 @@ NitroMap combines three useful surfaces without hiding how any of them work:
 - Extends `ConcurrentHashMap` instead of replacing it with a proprietary API.
 - Opens persistent UTF-8 string maps with `NitroMap.strings("data/customers")`.
 - Persists `put`, `putAll`, both `remove` variants, and `removeAll` asynchronously.
+- Offers opt-in destructive background eviction for entry-bounded maps.
 - Keeps serialization and file I/O away from application write threads.
 - Gives factory-created maps one shared JVM shutdown safety net.
 - Replays a length-prefixed append-only log and safely discards a torn final record.
@@ -56,7 +58,7 @@ NitroMap combines three useful surfaces without hiding how any of them work:
 - Serves one or many named maps through built-in Java networking.
 - Provides authorization and native HTTP filter hooks without an external web framework.
 - Has no runtime dependencies beyond the JDK.
-- Is verified by 148 correctness and integration tests plus six opt-in benchmark tests.
+- Is verified by 155 correctness and integration tests plus six opt-in benchmark tests.
 
 ## Architecture
 
@@ -67,13 +69,15 @@ flowchart LR
     C --> D["Background writer"]
     D --> E[("nitromap.log")]
     E -->|"startup replay"| B
+    B -->|"over entry limit"| V["Background evictor"]
+    V -->|"remove + tombstone"| B
     B --> Q["SQL-like query engine"]
     B --> H["Built-in REST API"]
 
     classDef hot fill:#ff9f1c,color:#111827,stroke:#ff5a1f,stroke-width:2px;
     classDef service fill:#16233f,color:#f8fafc,stroke:#7dd3fc,stroke-width:1px;
     class B hot;
-    class A,C,D,E,Q,H service;
+    class A,C,D,E,V,Q,H service;
 ```
 
 ## How persistence works
@@ -124,6 +128,34 @@ snapshot are appended after compaction, so they are not lost.
 Compaction is synchronous and manually triggered in this version. It is best
 run when log growth justifies the temporary disk and serialization work, not on
 every write.
+
+## Memory-bounded eviction
+
+NitroMap keeps every entry by default. Applications that can safely discard
+records may enable destructive background eviction with an approximate entry
+limit:
+
+```java
+NitroMap<String, String> cache = NitroMap
+        .strings("data/cache")
+        .evictAt(100_000);
+```
+
+When the map grows beyond the limit, one daemon worker removes entries using
+the map's unordered traversal until roughly 90% remain. The application write
+that crossed the limit only schedules this work. Evictions use the normal
+conditional removal path, so maintained indexes are updated and persistent
+maps write tombstones asynchronously.
+
+This is deletion, not disk tiering. An evicted entry disappears from `get`,
+queries, REST endpoints, and persisted recovery. `flush()` waits for the current
+eviction pass before making its tombstones durable.
+
+The limit counts entries rather than Java object bytes, and a large `putAll` or
+a writer that outruns the worker can exceed it temporarily. Choose the limit
+from measured record sizes and leave heap headroom for indexes, persistence
+buffers, and the rest of the application. Calling `evictAt` again replaces the
+previous limit. Maps that never call it retain the normal no-eviction behavior.
 
 ## Quick start
 
@@ -464,20 +496,26 @@ vary with the JVM, CPU, filesystem, thermal state, data shape, and contention.
 
 | Scenario | Median throughput | Median cost |
 |---|---:|---:|
-| In-memory `get` | 276.2 million ops/s | 3.6 ns/op |
-| In-memory `put` | 130.5 million ops/s | 7.7 ns/op |
-| Persistent `put` enqueue | 50.7 million ops/s | 19.7 ns/op |
-| Persistent `put` plus durability checkpoint | 3.91 million ops/s | 255.6 ns/op |
-| Compacted log replay | 426,864 records/s | 2,342.7 ns/record |
-| Cached ordered SQL query | 1,854 queries/s | 539.3 µs/query |
-| Direct `_key` query | 980,977 queries/s | 1.019 µs/query |
-| Secondary-index query | 914,571 queries/s | 1.093 µs/query |
-| Full-scan equality query | 568 queries/s | 1,760.9 µs/query |
-| Early `LIMIT` query | 768,172 queries/s | 1.302 µs/query |
-| Plain row `put` | 70.3 million ops/s | 14.2 ns/op |
-| Secondary-indexed row `put` | 10.2 million ops/s | 98.3 ns/op |
+| In-memory `get` | 272.8 million ops/s | 3.7 ns/op |
+| In-memory `put` | 126.5 million ops/s | 7.9 ns/op |
+| Eviction-ready `put` below its limit | 103.2 million ops/s | 9.7 ns/op |
+| Persistent `put` enqueue | 61.9 million ops/s | 16.2 ns/op |
+| Persistent `put` plus durability checkpoint | 4.08 million ops/s | 245.3 ns/op |
+| Compacted log replay | 438,698 records/s | 2,279.5 ns/record |
+| Cached ordered SQL query | 1,507 queries/s | 663.5 µs/query |
+| Direct `_key` query | 755,610 queries/s | 1.323 µs/query |
+| Secondary-index query | 757,983 queries/s | 1.319 µs/query |
+| Full-scan equality query | 576 queries/s | 1,735.8 µs/query |
+| Early `LIMIT` query | 829,744 queries/s | 1.205 µs/query |
+| Plain row `put` | 68.2 million ops/s | 14.7 ns/op |
+| Secondary-indexed row `put` | 10.0 million ops/s | 99.5 ns/op |
 
 The map benchmarks rotate through 65,536 hot keys on one application thread.
+The eviction-ready scenario configures a 131,072-entry limit without crossing
+it, isolating the configured hot-path check; it added 1.8 ns per `put` in this
+run. Active eviction cost depends on removal volume, index count, and
+persistence batching.
+
 The persistence scenario performs 500,000 updates while the background writer
 is active; the durability figure includes the final `flush()`. Replay loads
 50,000 compacted records. The query scenario scans 10,000 rows, filters roughly
@@ -486,7 +524,7 @@ plan.
 
 The access-path scenarios query 50,000 uniquely keyed rows. The indexed and
 full-scan scenarios execute the same equality predicate; on this run the index
-delivered roughly 1,610 times more queries per second. The write comparison
+delivered roughly 1,316 times more queries per second. The write comparison
 rotates through the same 50,000 keys and shows the cost of maintaining one
 unique-value secondary index.
 
@@ -501,7 +539,8 @@ NitroMap follows a few practical rules:
 ### Keep the write path short
 
 `put` and `remove` update memory and mark a key dirty. Encoding, batching, disk
-writes, and disk synchronization belong to the background writer.
+writes, disk synchronization, and configured eviction belong to background
+workers.
 
 ### Prefer sequential I/O
 
@@ -544,6 +583,9 @@ current boundaries are deliberate:
 - Recent asynchronous mutations can be lost if the process terminates before
   the next batch reaches disk. Factory-created maps flush during ordinary JVM
   shutdown, but hard termination still requires an earlier `flush()` boundary.
+- Eviction is disabled by default and permanently deletes selected records when
+  enabled. Its entry limit is approximate, not a strict byte-level heap limit,
+  and its tombstones follow the same asynchronous durability model as removals.
 - Compaction is manual; there is no automatic size or stale-record threshold
   yet.
 - A persistence directory should be opened by only one NitroMap instance at a
@@ -562,7 +604,7 @@ fast common path.
 
 ## Building and testing
 
-Run the 148 correctness and integration tests:
+Run the 155 correctness and integration tests:
 
 ```shell
 mvn test
@@ -593,8 +635,8 @@ codecs, SQL parsing and execution, join strategies, grouping, ordering,
 validation, binary HTTP batches, authorization, filters, JSON encoding,
 live REST requests, named-map routing, and heterogeneous codecs against a
 temporary local server. Query tests cover direct access paths, early limits,
-index maintenance, concurrent writes, numeric and null values, and indexed
-joins.
+index maintenance, concurrent writes, numeric and null values, indexed joins,
+background eviction, concurrent eviction, and persisted eviction tombstones.
 
 ## Project layout
 
@@ -604,6 +646,7 @@ assets/
 
 src/main/java/dev/nitromap/
 ├── NitroMap.java             concurrent map and public persistence API
+├── Evictor.java              opt-in destructive background eviction
 ├── ShutdownRegistry.java     shared JVM shutdown safety net
 ├── codec/                   binary encoding contracts and codecs
 ├── http/                    REST server, routing, hooks, and wire formats

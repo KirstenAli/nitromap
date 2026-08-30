@@ -29,6 +29,7 @@ public class NitroMap<K, V> extends ConcurrentHashMap<K, V> implements AutoClose
 
     private final transient LogStore<K, V> store;
     private transient volatile List<Consumer<K>> mutationListeners;
+    private transient volatile Evictor<K, V> evictor;
     private transient boolean closed;
 
     /** Opens a persistent UTF-8 string map with best-effort shutdown handling. */
@@ -82,6 +83,7 @@ public class NitroMap<K, V> extends ConcurrentHashMap<K, V> implements AutoClose
     public V put(K key, V value) {
         V previous = super.put(key, value);
         changed(key);
+        evict();
         return previous;
     }
 
@@ -90,6 +92,7 @@ public class NitroMap<K, V> extends ConcurrentHashMap<K, V> implements AutoClose
         super.putAll(entries);
         if (store != null) store.markAll(entries.keySet());
         notifyMutations(entries.keySet());
+        evict();
     }
 
     @Override
@@ -118,11 +121,22 @@ public class NitroMap<K, V> extends ConcurrentHashMap<K, V> implements AutoClose
     }
 
     public void flush() throws IOException {
+        flushEvictor();
         if (store != null) store.flush();
     }
 
     public void compact() throws IOException {
+        flushEvictor();
         if (store != null) store.compact();
+    }
+
+    /** Enables destructive background eviction above an approximate entry limit. */
+    public synchronized NitroMap<K, V> evictAt(int maximumEntries) {
+        if (maximumEntries < 1) throw new IllegalArgumentException("maximumEntries must be positive");
+        closeEvictor();
+        evictor = new Evictor<>(this, maximumEntries);
+        evictor.signal();
+        return this;
     }
 
     /** Registers a lightweight mutation observer for derived data structures. */
@@ -135,8 +149,14 @@ public class NitroMap<K, V> extends ConcurrentHashMap<K, V> implements AutoClose
 
     @Override
     public synchronized void close() throws IOException {
-        if (store == null || closed) return;
+        if (closed) return;
         closed = true;
+        closeEvictor();
+        closeStore();
+    }
+
+    private void closeStore() throws IOException {
+        if (store == null) return;
         ShutdownRegistry.remove(this);
         store.close();
     }
@@ -179,6 +199,21 @@ public class NitroMap<K, V> extends ConcurrentHashMap<K, V> implements AutoClose
 
     private void notifyMutation(List<Consumer<K>> listeners, K key) {
         listeners.forEach(listener -> listener.accept(key));
+    }
+
+    private void evict() {
+        Evictor<K, V> current = evictor;
+        if (current != null) current.signal();
+    }
+
+    private void closeEvictor() {
+        Evictor<K, V> current = evictor;
+        if (current != null) current.close();
+    }
+
+    private void flushEvictor() {
+        Evictor<K, V> current = evictor;
+        if (current != null) current.flush();
     }
 
     private static <K, V> NitroMap<K, V> managed(NitroMap<K, V> map) {

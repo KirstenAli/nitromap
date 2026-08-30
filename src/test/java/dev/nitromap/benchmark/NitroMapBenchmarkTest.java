@@ -56,6 +56,10 @@ class NitroMapBenchmarkTest {
     void benchmarksInMemoryWrites() throws Exception {
         NitroMap<Integer, Integer> map = integers();
         report(benchmark("In-memory put", "ops", WRITES, () -> writes(map)));
+        try (NitroMap<Integer, Integer> evicting = evictingIntegers()) {
+            report(benchmark("Eviction-ready put", "ops", WRITES,
+                    () -> writes(evicting)));
+        }
     }
 
     @Test
@@ -122,6 +126,10 @@ class NitroMapBenchmarkTest {
         NitroMap<Integer, Integer> map = new NitroMap<>(KEYS);
         for (int key = 0; key < KEYS; key++) map.put(key, key);
         return map;
+    }
+
+    private NitroMap<Integer, Integer> evictingIntegers() {
+        return integers().evictAt(KEYS * 2);
     }
 
     private void reads(NitroMap<Integer, Integer> map) {
