@@ -91,6 +91,7 @@ asynchronous persistence.
 - [Log compaction](#log-compaction)
 - [Codecs](#codecs)
 - [SQL-like queries](#sql-like-queries)
+  - [Showcase query](#showcase-query)
   - [Supported query subset](#supported-query-subset)
   - [Aggregate behavior](#aggregate-behavior)
   - [Query optimization](#query-optimization)
@@ -311,6 +312,42 @@ for (Map<String, Object> row : result.rows()) {
     System.out.println(row);
 }
 ```
+
+### Showcase query
+
+The query surface can compose joins, nested conditions, named parameters,
+multiple grouping columns, every aggregate, multi-column ordering, and a limit
+in one statement. Assuming `orders` exposes `customerId` and `total`:
+
+```java
+var parameters = Map.of(
+        "primaryCity", "London",
+        "secondaryCity", "Paris",
+        "minimumScore", 50,
+        "minimumOrder", 25);
+
+QueryResult result = queries.query("""
+        SELECT c.city,
+               c.name,
+               COUNT(*) AS order_count,
+               SUM(o.total) AS total_sales,
+               AVG(o.total) AS average_order,
+               MIN(o.total) AS smallest_order,
+               MAX(o.total) AS largest_order
+        FROM customers c
+        JOIN orders o ON c._key = o.customerId
+        WHERE (c.city = :primaryCity OR c.city = :secondaryCity)
+          AND c.score >= :minimumScore
+          AND o.total >= :minimumOrder
+        GROUP BY c.city, c.name
+        ORDER BY total_sales DESC, average_order DESC, c.city, c.name
+        LIMIT 20
+        """, parameters);
+```
+
+This produces one summary per city and customer, ordered by the customers with
+the highest qualifying sales. The same SQL can run locally through
+`QueryEngine` or across shards through `DistributedQueryEngine`.
 
 ### Supported query subset
 
