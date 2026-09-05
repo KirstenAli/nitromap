@@ -6,7 +6,7 @@
   <img src="https://img.shields.io/badge/Java-17%2B-f97316?style=for-the-badge&amp;logo=openjdk&amp;logoColor=white" alt="Java 17 or newer">
   <img src="https://img.shields.io/badge/Maven-Build-c71a36?style=for-the-badge&amp;logo=apachemaven&amp;logoColor=white" alt="Built with Maven">
   <img src="https://img.shields.io/badge/Runtime_dependencies-0-16a34a?style=for-the-badge" alt="Zero runtime dependencies">
-  <img src="https://img.shields.io/badge/Tests-224-2563eb?style=for-the-badge" alt="224 correctness and integration tests">
+  <img src="https://img.shields.io/badge/Tests-226-2563eb?style=for-the-badge" alt="226 correctness and integration tests">
   <img src="https://img.shields.io/badge/License-Apache_2.0-9333ea?style=for-the-badge" alt="Apache License 2.0">
 </p>
 
@@ -144,7 +144,7 @@ NitroMap combines three useful surfaces without hiding how any of them work:
 - Serves one or many named maps through built-in Java networking.
 - Provides authorization and native HTTP filter hooks without an external web framework.
 - Has no runtime dependencies beyond the JDK.
-- Is verified by 224 correctness and integration tests plus six opt-in benchmark tests.
+- Is verified by 226 correctness and integration tests plus six opt-in benchmark tests.
 
 ## Architecture
 
@@ -830,7 +830,7 @@ fast common path.
 
 ## Building and testing
 
-Run the 224 correctness and integration tests:
+Run the 226 correctness and integration tests:
 
 ```shell
 mvn test
@@ -859,7 +859,9 @@ remote query stages, hash shuffles, partial aggregation, global ordering,
 bounded skew joins, and spill cleanup. Query tests also cover direct access
 paths, early limits, index maintenance, concurrent writes, numeric and null
 values, indexed joins, background eviction, concurrent eviction, and persisted
-eviction tombstones.
+eviction tombstones. A multi-process integration test launches two independent
+JVM nodes, routes data between them, executes a cross-node join, and verifies
+node-loss isolation and failed-query spill cleanup.
 
 ## Project layout
 
