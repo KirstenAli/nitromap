@@ -6,7 +6,7 @@
   <img src="https://img.shields.io/badge/Java-17%2B-f97316?style=for-the-badge&amp;logo=openjdk&amp;logoColor=white" alt="Java 17 or newer">
   <img src="https://img.shields.io/badge/Maven-Build-c71a36?style=for-the-badge&amp;logo=apachemaven&amp;logoColor=white" alt="Built with Maven">
   <img src="https://img.shields.io/badge/Runtime_dependencies-0-16a34a?style=for-the-badge" alt="Zero runtime dependencies">
-  <img src="https://img.shields.io/badge/Tests-226-2563eb?style=for-the-badge" alt="226 correctness and integration tests">
+  <img src="https://img.shields.io/badge/Tests-227-2563eb?style=for-the-badge" alt="227 correctness and integration tests">
   <img src="https://img.shields.io/badge/License-Apache_2.0-9333ea?style=for-the-badge" alt="Apache License 2.0">
 </p>
 
@@ -145,7 +145,7 @@ NitroMap combines three useful surfaces without hiding how any of them work:
 - Serves one or many named maps through built-in Java networking.
 - Provides authorization and native HTTP filter hooks without an external web framework.
 - Has no runtime dependencies beyond the JDK.
-- Is verified by 226 correctness and integration tests plus six opt-in benchmark tests.
+- Is verified by 227 correctness and integration tests plus six opt-in benchmark tests.
 
 ## Architecture
 
@@ -323,7 +323,7 @@ in one statement. Assuming `orders` exposes `customerId` and `total`:
 var parameters = Map.of(
         "primaryCity", "London",
         "secondaryCity", "Paris",
-        "minimumScore", 50,
+        "minimumScore", 10,
         "minimumOrder", 25);
 
 QueryResult result = queries.query("""
@@ -867,7 +867,7 @@ fast common path.
 
 ## Building and testing
 
-Run the 226 correctness and integration tests:
+Run the 227 correctness and integration tests:
 
 ```shell
 mvn test

@@ -10,6 +10,24 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class QueryJoinGroupTest {
 
+    private static final String SHOWCASE_QUERY = """
+            SELECT c.city,
+                   c.name,
+                   COUNT(*) AS order_count,
+                   SUM(o.total) AS total_sales,
+                   AVG(o.total) AS average_order,
+                   MIN(o.total) AS smallest_order,
+                   MAX(o.total) AS largest_order
+            FROM customers c
+            JOIN orders o ON c._key = o.customerId
+            WHERE (c.city = :primaryCity OR c.city = :secondaryCity)
+              AND c.score >= :minimumScore
+              AND o.total >= :minimumOrder
+            GROUP BY c.city, c.name
+            ORDER BY total_sales DESC, average_order DESC, c.city, c.name
+            LIMIT 20
+            """;
+
     private QueryEngine engine;
 
     @BeforeEach
@@ -53,6 +71,12 @@ class QueryJoinGroupTest {
         assertEquals(0L, result.rows().get(0).get("total"));
     }
 
+    @Test
+    void composesTheReadmeShowcaseQuery() {
+        QueryResult result = engine.query(SHOWCASE_QUERY, showcaseParameters());
+        assertEquals(showcaseRows(), result.rows());
+    }
+
     private String directJoin() {
         return """
                 SELECT c.city, COUNT(*) AS order_count
@@ -72,6 +96,23 @@ class QueryJoinGroupTest {
 
     private Map<String, Object> group(String city, long count) {
         return Map.of("city", city, "order_count", count);
+    }
+
+    private Map<String, Object> showcaseParameters() {
+        return Map.of("primaryCity", "London", "secondaryCity", "Paris",
+                "minimumScore", 10, "minimumOrder", 25);
+    }
+
+    private List<Map<String, Object>> showcaseRows() {
+        return List.of(showcase("Paris", "Bob", 1L, 200L, 200.0, 200, 200),
+                showcase("London", "Alice", 2L, 150L, 75.0, 30, 120));
+    }
+
+    private Map<String, Object> showcase(String city, String name, long count,
+                                         long sales, double average, int smallest, int largest) {
+        return Map.of("city", city, "name", name, "order_count", count,
+                "total_sales", sales, "average_order", average,
+                "smallest_order", smallest, "largest_order", largest);
     }
 
     private List<Object> totals(QueryResult result) {
