@@ -904,7 +904,7 @@ node-loss isolation and failed-query spill cleanup.
 
 ## Contributing
 
-Issues and focused pull requests are welcome. Keep changes small, add tests for
+Bug reports, feature proposals, and focused pull requests are welcome. Keep changes small, add tests for
 new behavior, and run `mvn test` before opening a pull request. Include an
 opt-in benchmark when a change affects a performance-sensitive path.
 
