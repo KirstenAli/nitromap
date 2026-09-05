@@ -11,8 +11,8 @@
 </p>
 
 <p align="center">
-  <a href="#why-nitromap">Why NitroMap</a> &bull;
   <a href="#quick-start">Quick start</a> &bull;
+  <a href="#why-nitromap">Why NitroMap</a> &bull;
   <a href="#sql-like-queries">SQL</a> &bull;
   <a href="#shared-nothing-clustering">Clustering</a> &bull;
   <a href="#rest-api">REST API</a> &bull;
@@ -30,18 +30,65 @@ It is designed for applications that need fast local state without introducing
 a database server, ORM, HTTP framework, or runtime dependency graph. The core
 remains intentionally small, explicit, and understandable.
 
+## Quick start
+
+Add NitroMap to your application's `pom.xml`. It is available from Maven
+Central, so no additional repository configuration is required:
+
+```xml
+<dependency>
+    <groupId>io.github.kirstenali</groupId>
+    <artifactId>nitromap</artifactId>
+    <version>0.1.0</version>
+</dependency>
+```
+
+Use the `dev.nitromap` package when importing NitroMap classes in Java code.
+
+Create a persistent UTF-8 string map in one line:
+
+```java
+import dev.nitromap.NitroMap;
+
+import java.util.Map;
+
+NitroMap<String, String> customers = NitroMap.strings("data/customers");
+
+customers.put("customer-1", "Ada");
+customers.putAll(Map.of("customer-2", "Grace", "customer-3", "Linus"));
+customers.remove("customer-3");
+```
+
+The factory creates the directory, restores existing records, starts background
+persistence, and reports startup failures as `UncheckedIOException`. Keep the
+map as an application-wide field when it should share the application's
+lifecycle:
+
+```java
+private static final NitroMap<String, String> CUSTOMERS =
+        NitroMap.strings("data/customers");
+```
+
+Factory-created maps share one JVM shutdown hook that performs a best-effort
+final close during ordinary shutdown. `flush()` remains available for an
+explicit durability checkpoint. Calling `close()` flushes immediately, releases
+the file, and unregisters the map from the hook; use try-with-resources for
+short-lived maps. Shutdown hooks cannot protect against `SIGKILL`, JVM crashes,
+or power loss. The checked `Path` and codec constructor remains available when
+an application wants to handle startup I/O failures directly.
+
 **Current status:** early-stage, fully test-driven, Java 17 compatible, and best
 suited to embedded applications that benefit from fast in-memory access and
 asynchronous persistence.
 
 ## Table of contents
 
+- [Quick start](#quick-start)
 - [Why NitroMap](#why-nitromap)
   - [Highlights](#highlights)
 - [Architecture](#architecture)
 - [How persistence works](#how-persistence-works)
 - [Log compaction](#log-compaction)
-- [Quick start](#quick-start)
 - [Codecs](#codecs)
 - [SQL-like queries](#sql-like-queries)
   - [Supported query subset](#supported-query-subset)
@@ -166,52 +213,6 @@ snapshot are appended after compaction, so they are not lost.
 Compaction is synchronous and manually triggered in this version. It is best
 run when log growth justifies the temporary disk and serialization work, not on
 every write.
-
-## Quick start
-
-Add NitroMap from Maven Central:
-
-```xml
-<dependency>
-    <groupId>io.github.kirstenali</groupId>
-    <artifactId>nitromap</artifactId>
-    <version>0.1.0</version>
-</dependency>
-```
-
-The Maven `groupId` identifies the published artifact. NitroMap's Java packages
-remain under `dev.nitromap`, so existing imports do not change.
-
-Create a persistent UTF-8 string map in one line:
-
-```java
-import dev.nitromap.NitroMap;
-
-import java.util.Map;
-
-NitroMap<String, String> customers = NitroMap.strings("data/customers");
-
-customers.put("customer-1", "Ada");
-customers.putAll(Map.of("customer-2", "Grace", "customer-3", "Linus"));
-customers.remove("customer-3");
-```
-
-The factory creates the directory, restores existing records, starts background
-persistence, and reports startup failures as `UncheckedIOException`. It can be
-kept as an application-wide field just like any other map:
-
-```java
-private static final NitroMap<String, String> CUSTOMERS =
-        NitroMap.strings("data/customers");
-```
-
-Factory-created maps share one JVM shutdown hook that performs a best-effort
-final close during ordinary shutdown. `flush()` remains available for an
-explicit durability checkpoint. Calling `close()` flushes immediately, releases
-the file, and unregisters the map from the hook; use try-with-resources for
-short-lived maps. Shutdown hooks cannot protect against `SIGKILL`, JVM crashes,
-or power loss. The checked `Path` and codec constructor remains available when
-an application wants to handle startup I/O failures directly.
 
 ## Codecs
 
