@@ -39,7 +39,7 @@ Central, so no additional repository configuration is required:
 <dependency>
     <groupId>io.github.kirstenali</groupId>
     <artifactId>nitromap</artifactId>
-    <version>0.1.0</version>
+    <version>0.2.0</version>
 </dependency>
 ```
 

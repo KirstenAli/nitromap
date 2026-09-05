@@ -6,7 +6,7 @@
 
     <groupId>io.github.kirstenali</groupId>
     <artifactId>nitromap</artifactId>
-    <version>0.1.0</version>
+    <version>0.2.0</version>
     <name>NitroMap</name>
     <description>A fast embedded record store with persistence, SQL-like queries, and REST.</description>
     <url>https://github.com/KirstenAli/nitromap</url>
