@@ -115,6 +115,7 @@ asynchronous persistence.
   - [Be honest about consistency](#be-honest-about-consistency)
 - [Scope and current boundaries](#scope-and-current-boundaries)
 - [Building and testing](#building-and-testing)
+- [Contributing](#contributing)
 - [Project layout](#project-layout)
 - [License](#license)
 
@@ -900,6 +901,12 @@ values, indexed joins, background eviction, concurrent eviction, and persisted
 eviction tombstones. A multi-process integration test launches two independent
 JVM nodes, routes data between them, executes a cross-node join, and verifies
 node-loss isolation and failed-query spill cleanup.
+
+## Contributing
+
+Issues and focused pull requests are welcome. Keep changes small, add tests for
+new behavior, and run `mvn test` before opening a pull request. Include an
+opt-in benchmark when a change affects a performance-sensitive path.
 
 ## Project layout
 
