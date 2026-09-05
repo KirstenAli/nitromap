@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#080d19">
+  <meta name="description" content="NitroMap is a fast embedded Java record store with asynchronous persistence, SQL-like queries, REST, and shared-nothing clustering.">
+  <meta property="og:title" content="NitroMap — Fast by default. Built to persist.">
+  <meta property="og:description" content="In-memory speed, asynchronous persistence, SQL-like queries, REST, and shared-nothing clustering in one zero-dependency Java library.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://kirstenali.github.io/nitromap/">
+  <meta property="og:image" content="https://kirstenali.github.io/nitromap/assets/nitromap-logo.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <title>NitroMap — Fast embedded Java storage</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script src="./script.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header" data-header>
+    <div class="nav-shell">
+      <a class="brand" href="#top" aria-label="NitroMap home">
+        <span class="brand-mark" aria-hidden="true">ϟ</span>
+        <span class="brand-name">Nitro<span>Map</span></span>
+      </a>
+
+      <button class="menu-button" type="button" aria-label="Open navigation" aria-expanded="false" data-menu-button>
+        <span></span><span></span>
+      </button>
+
+      <nav class="site-nav" aria-label="Primary navigation" data-nav>
+        <a href="#features">Features</a>
+        <a href="#sql">SQL engine</a>
+        <a href="#clustering">Clustering</a>
+        <a href="#benchmarks">Benchmarks</a>
+        <a class="nav-github" href="https://github.com/KirstenAli/nitromap">GitHub <span aria-hidden="true">↗</span></a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero section" id="top">
+      <div class="hero-glow hero-glow-one"></div>
+      <div class="hero-glow hero-glow-two"></div>
+      <div class="shell hero-grid">
+        <div class="hero-copy reveal">
+          <a class="release-pill" href="https://central.sonatype.com/artifact/io.github.kirstenali/nitromap/0.2.0">
+            <span class="status-dot"></span>
+            Version 0.2.0 on Maven Central
+            <span aria-hidden="true">→</span>
+          </a>
+          <p class="eyebrow">Embedded Java record store</p>
+          <h1>The map you know.<br><span>Persistence that keeps up.</span></h1>
+          <p class="hero-lede">NitroMap adds asynchronous persistence, SQL-like querying, REST, and shared-nothing clustering to the familiar <code>ConcurrentHashMap</code> API.</p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="#quickstart">Start building <span aria-hidden="true">→</span></a>
+            <a class="button button-secondary" href="https://github.com/KirstenAli/nitromap">View on GitHub <span aria-hidden="true">↗</span></a>
+          </div>
+          <div class="hero-trust" aria-label="Project details">
+            <span>Java 17+</span>
+            <span>No runtime dependencies</span>
+            <span>Apache 2.0</span>
+          </div>
+        </div>
+
+        <div class="hero-visual reveal" data-delay="1">
+          <div class="code-window hero-code">
+            <div class="window-bar">
+              <div class="window-dots" aria-hidden="true"><i></i><i></i><i></i></div>
+              <span>Application.java</span>
+              <span class="window-state"><i></i> running</span>
+            </div>
+            <pre><code><span class="code-type">NitroMap</span>&lt;<span class="code-type">String</span>, <span class="code-type">String</span>&gt; customers =
+    <span class="code-type">NitroMap</span>.<span class="code-method">strings</span>(<span class="code-string">"data/customers"</span>);
+
+customers.<span class="code-method">put</span>(<span class="code-string">"customer-1"</span>, <span class="code-string">"Ada"</span>);
+
+<span class="code-type">String</span> customer =
+    customers.<span class="code-method">get</span>(<span class="code-string">"customer-1"</span>);</code></pre>
+            <div class="runtime-strip">
+              <div><span class="pulse"></span><strong>Memory</strong><small>hot path</small></div>
+              <span class="runtime-arrow">→</span>
+              <div><span class="pulse pulse-blue"></span><strong>Writer</strong><small>asynchronous</small></div>
+              <span class="runtime-arrow">→</span>
+              <div><span class="pulse pulse-muted"></span><strong>Log</strong><small>recoverable</small></div>
+            </div>
+          </div>
+          <div class="floating-chip chip-query"><span>SQL</span> queryable</div>
+          <div class="floating-chip chip-zero"><span>0</span> dependencies</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="proof-bar" aria-label="NitroMap project statistics">
+      <div class="shell proof-grid">
+        <div><strong>227</strong><span>correctness tests</span></div>
+        <div><strong>0</strong><span>runtime dependencies</span></div>
+        <div><strong>61.9M</strong><span>persistent put enqueues/s<sup>1</sup></span></div>
+        <div><strong>17+</strong><span>Java compatibility</span></div>
+      </div>
+    </section>
+
+    <section class="section features" id="features">
+      <div class="shell">
+        <div class="section-heading reveal">
+          <div>
+            <p class="eyebrow">One small library</p>
+            <h2>More than an in-memory map.</h2>
+          </div>
+          <p>NitroMap keeps the common path direct while adding the storage and query capabilities that embedded applications usually have to assemble themselves.</p>
+        </div>
+
+        <div class="bento-grid">
+          <article class="feature-card feature-wide feature-persistence reveal">
+            <div class="feature-top">
+              <span class="feature-index">01</span>
+              <span class="feature-label">Persistence</span>
+            </div>
+            <h3>Writes stay fast. Disk work moves aside.</h3>
+            <p>Mutations update memory first. A background writer coalesces changed keys, serializes the latest state, and forces each batch once.</p>
+            <div class="persistence-flow" aria-label="Persistence flow">
+              <span><i class="flow-dot orange"></i>put</span>
+              <b>→</b>
+              <span><i class="flow-dot blue"></i>dirty key</span>
+              <b>→</b>
+              <span><i class="flow-dot pale"></i>batched log</span>
+            </div>
+          </article>
+
+          <article class="feature-card feature-map reveal" data-delay="1">
+            <div class="feature-top">
+              <span class="feature-index">02</span>
+              <span class="feature-label">Familiar API</span>
+            </div>
+            <h3>A real <code>ConcurrentHashMap</code>.</h3>
+            <p>Use the API Java developers already understand. Reads remain direct, concurrent, and entirely in memory.</p>
+            <div class="map-rings" aria-hidden="true"><span></span><span></span><span></span></div>
+          </article>
+
+          <article class="feature-card feature-sql reveal">
+            <div class="feature-top">
+              <span class="feature-index">03</span>
+              <span class="feature-label">Query engine</span>
+            </div>
+            <h3>Ask more of your map.</h3>
+            <p>Filter, join, group, aggregate, order, and limit records with a focused SQL-like language.</p>
+            <pre class="mini-code"><code><span class="code-keyword">SELECT</span> city, <span class="code-fn">SUM</span>(total)
+<span class="code-keyword">FROM</span> orders
+<span class="code-keyword">GROUP BY</span> city</code></pre>
+          </article>
+
+          <article class="feature-card feature-cluster reveal" data-delay="1">
+            <div class="feature-top">
+              <span class="feature-index">04</span>
+              <span class="feature-label">Shared nothing</span>
+            </div>
+            <h3>Scale memory and compute across processes.</h3>
+            <p>Stable logical partitions route each key to exactly one owner. No replica, quorum, or hidden fallback copy.</p>
+            <div class="mini-nodes" aria-label="Three connected cluster nodes">
+              <i>A</i><span></span><i>B</i><span></span><i>C</i>
+            </div>
+          </article>
+
+          <article class="feature-card reveal">
+            <div class="feature-top">
+              <span class="feature-index">05</span>
+              <span class="feature-label">Built-in REST</span>
+            </div>
+            <h3>Integration without a framework.</h3>
+            <p>Expose one or many named maps using Java's built-in networking, with authorization and filter hooks.</p>
+            <div class="endpoint"><span>PUT</span>/maps/customers/entries/{key}</div>
+          </article>
+
+          <article class="feature-card reveal" data-delay="1">
+            <div class="feature-top">
+              <span class="feature-index">06</span>
+              <span class="feature-label">Bounded memory</span>
+            </div>
+            <h3>Stay in control under pressure.</h3>
+            <p>Opt into background eviction, bounded query operators, and disk spill for larger joins, groups, and sorts.</p>
+            <div class="meter" aria-hidden="true"><span></span><i>90%</i></div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section architecture-section">
+      <div class="shell architecture-grid">
+        <div class="architecture-copy reveal">
+          <p class="eyebrow">Designed around the hot path</p>
+          <h2>The application thread does less.</h2>
+          <p>A persistent mutation changes the map, marks the key, and returns. Serialization and file I/O happen on the background writer.</p>
+          <ul class="check-list">
+            <li><span>✓</span>Repeated changes coalesce before disk</li>
+            <li><span>✓</span>One force-to-disk operation per batch</li>
+            <li><span>✓</span>Torn final records are discarded safely</li>
+            <li><span>✓</span>Atomic manual log compaction</li>
+          </ul>
+          <a class="text-link" href="https://github.com/KirstenAli/nitromap#how-persistence-works">Read the persistence model <span>→</span></a>
+        </div>
+
+        <div class="architecture-panel reveal" data-delay="1">
+          <div class="arch-caption"><span>Mutation path</span><i>application thread</i></div>
+          <div class="arch-stage stage-hot">
+            <span class="stage-number">1</span>
+            <div><strong>Update memory</strong><small>ConcurrentHashMap</small></div>
+            <em>nanoseconds</em>
+          </div>
+          <div class="arch-connector"><span>mark key</span></div>
+          <div class="arch-stage">
+            <span class="stage-number">2</span>
+            <div><strong>Coalesce drift</strong><small>latest key state wins</small></div>
+            <em>in memory</em>
+          </div>
+          <div class="background-boundary"><span>background worker</span></div>
+          <div class="arch-stage">
+            <span class="stage-number">3</span>
+            <div><strong>Append batch</strong><small>sequential file I/O</small></div>
+            <em>off path</em>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section sql-section" id="sql">
+      <div class="shell">
+        <div class="section-heading reveal">
+          <div>
+            <p class="eyebrow">SQL-like querying</p>
+            <h2>A compact engine with serious range.</h2>
+          </div>
+          <p>Compose multiple joins, nested conditions, parameters, grouping, common aggregates, ordering, and limits in one cached query plan.</p>
+        </div>
+
+        <div class="sql-showcase reveal">
+          <div class="sql-tabs" aria-hidden="true">
+            <span class="active">revenue_by_customer.sql</span>
+            <span>Query result</span>
+          </div>
+          <div class="sql-content">
+            <div class="line-numbers" aria-hidden="true">01<br>02<br>03<br>04<br>05<br>06<br>07<br>08<br>09<br>10<br>11<br>12<br>13<br>14<br>15</div>
+            <pre><code><span class="code-keyword">SELECT</span> c.city, c.name,
+       <span class="code-fn">COUNT</span>(*) <span class="code-keyword">AS</span> order_count,
+       <span class="code-fn">SUM</span>(o.total) <span class="code-keyword">AS</span> total_sales,
+       <span class="code-fn">AVG</span>(o.total) <span class="code-keyword">AS</span> average_order,
+       <span class="code-fn">MIN</span>(o.total) <span class="code-keyword">AS</span> smallest_order,
+       <span class="code-fn">MAX</span>(o.total) <span class="code-keyword">AS</span> largest_order
+<span class="code-keyword">FROM</span> customers c
+<span class="code-keyword">JOIN</span> orders o <span class="code-keyword">ON</span> c._key = o.customerId
+<span class="code-keyword">WHERE</span> (c.city = <span class="code-param">:primaryCity</span>
+       <span class="code-keyword">OR</span> c.city = <span class="code-param">:secondaryCity</span>)
+  <span class="code-keyword">AND</span> c.score &gt;= <span class="code-param">:minimumScore</span>
+  <span class="code-keyword">AND</span> o.total &gt;= <span class="code-param">:minimumOrder</span>
+<span class="code-keyword">GROUP BY</span> c.city, c.name
+<span class="code-keyword">ORDER BY</span> total_sales <span class="code-keyword">DESC</span>, average_order <span class="code-keyword">DESC</span>
+<span class="code-keyword">LIMIT</span> 20</code></pre>
+          </div>
+          <div class="sql-footer">
+            <span><i></i>Parsed plans cached by SQL text</span>
+            <span>Local or distributed execution</span>
+          </div>
+        </div>
+
+        <div class="capability-row reveal">
+          <span>SELECT</span><span>INNER JOIN</span><span>WHERE</span><span>AND / OR</span><span>GROUP BY</span><span>COUNT</span><span>SUM</span><span>AVG</span><span>MIN / MAX</span><span>ORDER BY</span><span>LIMIT</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="section cluster-section" id="clustering">
+      <div class="shell cluster-grid">
+        <div class="cluster-visual reveal">
+          <div class="cluster-orbit orbit-one"></div>
+          <div class="cluster-orbit orbit-two"></div>
+          <div class="cluster-core">
+            <small>1,024</small>
+            <strong>logical<br>partitions</strong>
+          </div>
+          <div class="cluster-node node-a"><i></i><strong>Node A</strong><small>local map + log</small></div>
+          <div class="cluster-node node-b"><i></i><strong>Node B</strong><small>local map + log</small></div>
+          <div class="cluster-node node-c"><i></i><strong>Node C</strong><small>local map + log</small></div>
+        </div>
+
+        <div class="cluster-copy reveal" data-delay="1">
+          <p class="eyebrow">Shared-nothing clustering</p>
+          <h2>Distribute the data, not copies of it.</h2>
+          <p>Stable FNV-1a hashing maps every key to a logical partition and one configured owner. Each node remains an ordinary local NitroMap with its own persistence.</p>
+          <div class="cluster-points">
+            <div><span>01</span><p><strong>Zero replication</strong>No quorum, replica, or fallback read.</p></div>
+            <div><span>02</span><p><strong>Bounded distributed SQL</strong>Streamed scans, hash shuffles, partial aggregation, and disk spill.</p></div>
+            <div><span>03</span><p><strong>Explicit failure</strong>If an owner is unavailable, its partitions fail instead of returning stale data.</p></div>
+          </div>
+          <a class="text-link" href="https://github.com/KirstenAli/nitromap#shared-nothing-clustering">Explore clustering <span>→</span></a>
+        </div>
+      </div>
+    </section>
+
+    <section class="section benchmark-section" id="benchmarks">
+      <div class="shell">
+        <div class="section-heading reveal">
+          <div>
+            <p class="eyebrow">Measured, not imagined</p>
+            <h2>A fast path you can inspect.</h2>
+          </div>
+          <p>Reference results from the project harness on Apple silicon. They are directional, transparent, and intentionally free of speed assertions.</p>
+        </div>
+
+        <div class="benchmark-grid reveal">
+          <div class="benchmark-hero">
+            <span>In-memory get</span>
+            <strong>272.8<small>M ops/s</small></strong>
+            <div class="benchmark-track"><i style="--width: 100%"></i></div>
+            <em>3.7 ns/op median reference cost</em>
+          </div>
+          <div class="benchmark-list">
+            <div><span>In-memory put</span><strong>126.5M <small>ops/s</small></strong></div>
+            <div><span>Persistent put enqueue</span><strong>61.9M <small>ops/s</small></strong></div>
+            <div><span>Direct key query</span><strong>755.6K <small>queries/s</small></strong></div>
+            <div><span>Secondary-index query</span><strong>758.0K <small>queries/s</small></strong></div>
+          </div>
+        </div>
+        <p class="benchmark-note reveal"><sup>1</sup> Reference run: macOS on ARM, 10 available processors, Java 25 runtime, compiled for Java 17. Workload, hardware, filesystem, thermals, and contention will change results. Run the bundled benchmark profile on your target system.</p>
+      </div>
+    </section>
+
+    <section class="section quickstart-section" id="quickstart">
+      <div class="shell quickstart-grid">
+        <div class="quickstart-copy reveal">
+          <p class="eyebrow">Start in one minute</p>
+          <h2>One dependency.<br>No server to operate.</h2>
+          <p>Add NitroMap from Maven Central, choose a directory, and keep using normal map operations.</p>
+          <div class="quick-links">
+            <a href="https://central.sonatype.com/artifact/io.github.kirstenali/nitromap/0.2.0">Maven Central <span>↗</span></a>
+            <a href="https://github.com/KirstenAli/nitromap#quick-start">Full documentation <span>↗</span></a>
+          </div>
+        </div>
+
+        <div class="install-stack reveal" data-delay="1">
+          <div class="code-window install-window">
+            <div class="window-bar">
+              <span>pom.xml</span>
+              <button class="copy-button" type="button" data-copy="maven-code">Copy</button>
+            </div>
+            <pre id="maven-code"><code>&lt;<span class="code-keyword">dependency</span>&gt;
+  &lt;<span class="code-keyword">groupId</span>&gt;io.github.kirstenali&lt;/<span class="code-keyword">groupId</span>&gt;
+  &lt;<span class="code-keyword">artifactId</span>&gt;nitromap&lt;/<span class="code-keyword">artifactId</span>&gt;
+  &lt;<span class="code-keyword">version</span>&gt;<span class="code-string">0.2.0</span>&lt;/<span class="code-keyword">version</span>&gt;
+&lt;/<span class="code-keyword">dependency</span>&gt;</code></pre>
+          </div>
+
+          <div class="code-window install-window">
+            <div class="window-bar">
+              <span>Customers.java</span>
+              <button class="copy-button" type="button" data-copy="java-code">Copy</button>
+            </div>
+            <pre id="java-code"><code><span class="code-type">NitroMap</span>&lt;<span class="code-type">String</span>, <span class="code-type">String</span>&gt; customers =
+    <span class="code-type">NitroMap</span>.<span class="code-method">strings</span>(<span class="code-string">"data/customers"</span>);
+
+customers.<span class="code-method">put</span>(<span class="code-string">"customer-1"</span>, <span class="code-string">"Ada"</span>);</code></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section principles-section">
+      <div class="shell principles-shell reveal">
+        <div>
+          <p class="eyebrow">Clear tradeoffs</p>
+          <h2>Small enough to understand.<br>Honest enough to trust.</h2>
+        </div>
+        <div class="principles-list">
+          <p><span>01</span><strong>Asynchronous by design</strong>Recent writes can be lost on hard termination before the next disk batch.</p>
+          <p><span>02</span><strong>No hidden availability story</strong>Cluster owners hold the only copy. Losing a node loses access to its partitions.</p>
+          <p><span>03</span><strong>Focused SQL, not a database disguise</strong>No transactions, outer joins, subqueries, or cluster-wide snapshots.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section closing-section">
+      <div class="shell closing-card reveal">
+        <div class="closing-bolt" aria-hidden="true">ϟ</div>
+        <p class="eyebrow">Open source · Apache 2.0</p>
+        <h2>Put your hot data<br>on a shorter path.</h2>
+        <p>Fast local state, practical persistence, and query power in one compact Java library.</p>
+        <div class="hero-actions">
+          <a class="button button-primary" href="https://github.com/KirstenAli/nitromap">Explore the repository <span aria-hidden="true">↗</span></a>
+          <a class="button button-secondary" href="#quickstart">Get started <span aria-hidden="true">↑</span></a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="shell footer-grid">
+      <a class="footer-brand" href="#top">
+        <img src="./assets/nitromap-logo.svg" alt="NitroMap">
+      </a>
+      <p>Fast by default. Built to persist.</p>
+      <div class="footer-links">
+        <a href="https://github.com/KirstenAli/nitromap">GitHub</a>
+        <a href="https://central.sonatype.com/artifact/io.github.kirstenali/nitromap/0.2.0">Maven Central</a>
+        <a href="https://github.com/KirstenAli/nitromap/blob/main/LICENSE">License</a>
+      </div>
+      <small>© <span data-year></span> Kirsten Ali</small>
+    </div>
+  </footer>
+</body>
+</html>

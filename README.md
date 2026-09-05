@@ -11,6 +11,7 @@
 </p>
 
 <p align="center">
+  <a href="https://kirstenali.github.io/nitromap/">Website</a> &bull;
   <a href="#quick-start">Quick start</a> &bull;
   <a href="#why-nitromap">Why NitroMap</a> &bull;
   <a href="#sql-like-queries">SQL</a> &bull;

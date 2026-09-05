@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 240" role="img" aria-labelledby="title description">
+  <title id="title">NitroMap</title>
+  <desc id="description">NitroMap wordmark with an orange lightning bolt and speed lines.</desc>
+
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b1020"/>
+      <stop offset="1" stop-color="#16233f"/>
+    </linearGradient>
+    <linearGradient id="nitro" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffd166"/>
+      <stop offset="0.5" stop-color="#ff9f1c"/>
+      <stop offset="1" stop-color="#ff5a1f"/>
+    </linearGradient>
+    <pattern id="grid" width="28" height="28" patternUnits="userSpaceOnUse">
+      <path d="M 28 0 L 0 0 0 28" fill="none" stroke="#7dd3fc" stroke-opacity="0.07"/>
+    </pattern>
+  </defs>
+
+  <rect x="1" y="1" width="958" height="238" rx="34" fill="url(#background)" stroke="#33466c" stroke-width="2"/>
+  <rect x="1" y="1" width="958" height="238" rx="34" fill="url(#grid)"/>
+
+  <g transform="translate(52 38)">
+    <path d="M58 5h72l36 62-36 62H58L22 67z" fill="#111a30" stroke="url(#nitro)" stroke-width="5"/>
+    <path d="M103 23 62 76h31l-13 42 50-59H98z" fill="url(#nitro)"/>
+    <path d="M4 46h35M0 67h31M9 88h30" fill="none" stroke="#ff9f1c" stroke-linecap="round" stroke-width="5"/>
+  </g>
+
+  <text x="254" y="116" fill="#f8fafc" font-family="Inter, Segoe UI, Helvetica Neue, Arial, sans-serif" font-size="76" font-weight="800" letter-spacing="-3">
+    Nitro<tspan fill="url(#nitro)">Map</tspan>
+  </text>
+  <text x="258" y="163" fill="#a9b8d3" font-family="Inter, Segoe UI, Helvetica Neue, Arial, sans-serif" font-size="20" font-weight="600" letter-spacing="4">
+    FAST BY DEFAULT. BUILT TO PERSIST.
+  </text>
+
+  <path d="M740 75h125M773 98h118M726 121h143" fill="none" stroke="url(#nitro)" stroke-linecap="round" stroke-opacity="0.55" stroke-width="4"/>
+</svg>
