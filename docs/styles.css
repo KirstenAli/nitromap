@@ -1518,7 +1518,9 @@ h3 {
 
 .principles-list p {
   display: grid;
-  grid-template-columns: 34px 1fr;
+  grid-template-areas: "number title" "number copy";
+  grid-template-columns: 44px 1fr;
+  column-gap: 14px;
   margin: 0;
   padding: 18px 0;
   border-bottom: 1px solid var(--line);
@@ -1536,18 +1538,31 @@ h3 {
   border: 0;
 }
 
-.principles-list span {
+.principle-number {
+  display: grid;
+  grid-area: number;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 1px solid rgba(255, 159, 28, 0.24);
+  border-radius: 9px;
   color: var(--orange);
+  background: rgba(255, 159, 28, 0.06);
   font-family: "SFMono-Regular", Consolas, monospace;
-  font-size: 9px;
+  font-size: 12px;
+  font-weight: 750;
 }
 
 .principles-list strong {
   display: block;
-  grid-column: 2;
+  grid-area: title;
   margin-bottom: 4px;
   color: #d9e1ee;
   font-size: 13px;
+}
+
+.principle-copy {
+  grid-area: copy;
 }
 
 .closing-section {
