@@ -55,11 +55,18 @@ final class SqlParser {
 
     private SelectValue selectValue() {
         if (match("*")) return new Wildcard();
-        if (!match("COUNT")) return column(identifier());
+        String name = identifier();
+        AggregateFunction function = AggregateFunction.named(name);
+        return function == null ? column(name) : aggregate(function);
+    }
+
+    private AggregateCall aggregate(AggregateFunction function) {
         expect("(");
-        expect("*");
+        ColumnRef column = match("*") ? null : column(identifier());
         expect(")");
-        return new CountAll();
+        if (column == null && function != AggregateFunction.COUNT)
+            throw error(function + " requires a column");
+        return new AggregateCall(function, column);
     }
 
     private Source source() {

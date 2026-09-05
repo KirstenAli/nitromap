@@ -36,20 +36,23 @@ record SelectItem(SelectValue value, String alias) {
 
     String label() {
         if (alias != null) return alias;
-        return value instanceof ColumnRef column ? column.name() : "count";
+        if (value instanceof ColumnRef column) return column.name();
+        if (value instanceof AggregateCall call) return call.function().label();
+        return "*";
     }
 
     boolean aggregate() {
-        return value instanceof CountAll;
+        return value instanceof AggregateCall;
     }
 
     boolean matches(String name) {
         if (alias != null && alias.equalsIgnoreCase(name)) return true;
-        return value instanceof ColumnRef column && column.matches(name);
+        if (value instanceof ColumnRef column) return column.matches(name);
+        return value instanceof AggregateCall && label().equalsIgnoreCase(name);
     }
 }
 
-sealed interface SelectValue permits ColumnRef, CountAll, Wildcard {
+sealed interface SelectValue permits ColumnRef, AggregateCall, Wildcard {
 }
 
 sealed interface Operand permits ColumnRef, LiteralValue, ParameterValue {
@@ -71,9 +74,34 @@ record ColumnRef(String qualifier, String name) implements SelectValue, Operand 
     String qualified() {
         return qualifier == null ? name : qualifier + "." + name;
     }
+
+    boolean same(ColumnRef other) {
+        if (!name.equalsIgnoreCase(other.name)) return false;
+        return qualifier == null || other.qualifier == null
+                || qualifier.equalsIgnoreCase(other.qualifier);
+    }
 }
 
-record CountAll() implements SelectValue {
+record AggregateCall(AggregateFunction function, ColumnRef column) implements SelectValue {
+
+    Object read(ValueRow row) {
+        return column == null ? Boolean.TRUE : row.read(column);
+    }
+}
+
+enum AggregateFunction {
+
+    COUNT, SUM, AVG, MIN, MAX;
+
+    static AggregateFunction named(String name) {
+        for (AggregateFunction function : values())
+            if (function.name().equalsIgnoreCase(name)) return function;
+        return null;
+    }
+
+    String label() {
+        return name().toLowerCase(java.util.Locale.ROOT);
+    }
 }
 
 record Wildcard() implements SelectValue {

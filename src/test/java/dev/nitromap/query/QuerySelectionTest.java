@@ -31,6 +31,12 @@ class QuerySelectionTest {
     }
 
     @Test
+    void ordersWildcardRows() {
+        Map<String, Object> row = query("SELECT * FROM customers c ORDER BY c.name LIMIT 1").rows().get(0);
+        assertEquals("Alice", row.get("c.name"));
+    }
+
+    @Test
     void supportsAliasesAndCaseInsensitiveNames() {
         QueryResult result = query("select C.NAME AS person from CUSTOMERS C where C._key = 'c1'");
         assertEquals("Alice", result.rows().get(0).get("person"));

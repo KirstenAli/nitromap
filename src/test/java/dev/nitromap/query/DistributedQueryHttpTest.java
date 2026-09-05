@@ -74,6 +74,14 @@ class DistributedQueryHttpTest {
     }
 
     @Test
+    void combinesRemoteAggregateStates() {
+        String sql = "SELECT COUNT(o.total) AS count, SUM(o.total) AS sum, AVG(o.total) AS avg, "
+                + "MIN(o.total) AS min, MAX(o.total) AS max FROM orders o";
+        assertEquals(Map.of("count", 2L, "sum", 30L, "avg", 15.0,
+                "min", 10, "max", 20), query(sql).get(0));
+    }
+
+    @Test
     void usesRemoteDirectKeyLookups() {
         String sql = "SELECT c.name FROM customers c WHERE c._key = :key";
         assertEquals(List.of(Map.of("name", "Grace")), query(sql, Map.of("key", "c2")));

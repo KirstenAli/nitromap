@@ -44,68 +44,26 @@ final class Projector {
     }
 
     private List<Map<String, Object>> grouped(List<Row> rows) {
-        List<Map<String, Object>> result = new ArrayList<>();
-        groups(rows).values().forEach(group -> result.add(project(group)));
+        AggregateGroup.validate(query);
+        Map<GroupKey, AggregateGroup> groups = groups();
+        rows.forEach(row -> add(groups, row));
+        List<Map<String, Object>> result = new ArrayList<>(groups.size());
+        groups.values().forEach(group -> result.add(group.result()));
         return result;
     }
 
-    private Map<GroupKey, Group> groups(List<Row> rows) {
-        if (query.groups().isEmpty()) return Map.of(new GroupKey(List.of()), Group.of(rows));
-        Map<GroupKey, Group> groups = new LinkedHashMap<>();
-        rows.forEach(row -> groups.computeIfAbsent(key(row), ignored -> new Group()).add(row));
+    private Map<GroupKey, AggregateGroup> groups() {
+        Map<GroupKey, AggregateGroup> groups = new LinkedHashMap<>();
+        if (query.groups().isEmpty()) groups.put(new GroupKey(List.of()), group(List.of()));
         return groups;
     }
 
-    private GroupKey key(Row row) {
-        return new GroupKey(query.groups().stream().map(row::read).toList());
+    private void add(Map<GroupKey, AggregateGroup> groups, Row row) {
+        List<Object> values = AggregateGroup.values(query, row);
+        groups.computeIfAbsent(new GroupKey(values), ignored -> group(values)).add(row);
     }
 
-    private Map<String, Object> project(Group group) {
-        Map<String, Object> result = new LinkedHashMap<>();
-        query.select().forEach(item -> result.put(item.label(), groupValue(group, item)));
-        return result;
-    }
-
-    private Object groupValue(Group group, SelectItem item) {
-        if (item.value() instanceof CountAll) return group.count();
-        if (item.value() instanceof Wildcard) throw new IllegalArgumentException("GROUP BY cannot select *");
-        ColumnRef column = (ColumnRef) item.value();
-        if (query.groups().stream().noneMatch(grouped -> same(grouped, column)))
-            throw new IllegalArgumentException("Selected column must appear in GROUP BY: " + column.qualified());
-        return group.value(column);
-    }
-
-    private boolean same(ColumnRef left, ColumnRef right) {
-        if (!left.name().equalsIgnoreCase(right.name())) return false;
-        return left.qualifier() == null || right.qualifier() == null
-                || left.qualifier().equalsIgnoreCase(right.qualifier());
-    }
-
-    private record GroupKey(List<Object> values) {
-    }
-
-    private static final class Group {
-
-        private Row first;
-        private long count;
-
-        static Group of(List<Row> rows) {
-            Group group = new Group();
-            rows.forEach(group::add);
-            return group;
-        }
-
-        void add(Row row) {
-            if (first == null) first = row;
-            count++;
-        }
-
-        long count() {
-            return count;
-        }
-
-        Object value(ColumnRef column) {
-            return first == null ? null : first.read(column);
-        }
+    private AggregateGroup group(List<Object> values) {
+        return new AggregateGroup(query, values);
     }
 }

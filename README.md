@@ -6,7 +6,7 @@
   <img src="https://img.shields.io/badge/Java-17%2B-f97316?style=for-the-badge&amp;logo=openjdk&amp;logoColor=white" alt="Java 17 or newer">
   <img src="https://img.shields.io/badge/Maven-Build-c71a36?style=for-the-badge&amp;logo=apachemaven&amp;logoColor=white" alt="Built with Maven">
   <img src="https://img.shields.io/badge/Runtime_dependencies-0-16a34a?style=for-the-badge" alt="Zero runtime dependencies">
-  <img src="https://img.shields.io/badge/Tests-209-2563eb?style=for-the-badge" alt="209 correctness and integration tests">
+  <img src="https://img.shields.io/badge/Tests-224-2563eb?style=for-the-badge" alt="224 correctness and integration tests">
   <img src="https://img.shields.io/badge/License-Apache_2.0-9333ea?style=for-the-badge" alt="Apache License 2.0">
 </p>
 
@@ -92,6 +92,7 @@ asynchronous persistence.
 - [Codecs](#codecs)
 - [SQL-like queries](#sql-like-queries)
   - [Supported query subset](#supported-query-subset)
+  - [Aggregate behavior](#aggregate-behavior)
   - [Query optimization](#query-optimization)
 - [Shared-nothing clustering](#shared-nothing-clustering)
   - [Key routing](#key-routing)
@@ -143,7 +144,7 @@ NitroMap combines three useful surfaces without hiding how any of them work:
 - Serves one or many named maps through built-in Java networking.
 - Provides authorization and native HTTP filter hooks without an external web framework.
 - Has no runtime dependencies beyond the JDK.
-- Is verified by 209 correctness and integration tests plus six opt-in benchmark tests.
+- Is verified by 224 correctness and integration tests plus six opt-in benchmark tests.
 
 ## Architecture
 
@@ -236,7 +237,7 @@ For example, an application that uses Jackson can store a `Customer` as JSON:
 ```java
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-record Customer(String name, String city) {}
+record Customer(String name, String city, int score) {}
 
 final class CustomerJsonCodec implements Codec<Customer> {
 
@@ -262,7 +263,7 @@ NitroMap<String, Customer> customers = NitroMap.open(
         Utf8StringCodec.INSTANCE,
         new CustomerJsonCodec());
 
-customers.put("customer-1", new Customer("Ada", "London"));
+customers.put("customer-1", new Customer("Ada", "London", 100));
 ```
 
 Jackson is supplied by the application in this example. NitroMap itself keeps
@@ -276,11 +277,12 @@ persistence log.
 First, register maps as named tables and describe their visible columns:
 
 ```java
-record Customer(String name, String city) {}
+record Customer(String name, String city, int score) {}
 
 Schema<Customer> customerSchema = Schema.<Customer>builder()
         .column("name", Customer::name)
         .column("city", Customer::city)
+        .column("score", Customer::score)
         .build();
 
 Catalog catalog = new Catalog()
@@ -295,11 +297,13 @@ column.
 
 ```java
 QueryResult result = queries.query("""
-        SELECT c.city, COUNT(*) AS customer_count
+        SELECT c.city, COUNT(*) AS customers,
+               SUM(c.score) AS total_score,
+               AVG(c.score) AS average_score
         FROM customers c
         WHERE c.city = :city OR c.name = :name
         GROUP BY c.city
-        ORDER BY customer_count DESC
+        ORDER BY average_score DESC
         LIMIT 10
         """, Map.of("city", "London", "name", "Ada"));
 
@@ -312,7 +316,8 @@ for (Map<String, Object> row : result.rows()) {
 
 The current parser supports:
 
-- `SELECT` with columns, aliases, `*`, and `COUNT(*)`.
+- `SELECT` with columns, aliases, `*`, `COUNT(*)`, `COUNT(column)`, `SUM`,
+  `AVG`, `MIN`, and `MAX`.
 - `FROM` with optional table aliases.
 - One or more `INNER JOIN` clauses using column equality.
 - `WHERE` with `=`, `!=`, `<>`, `>`, `>=`, `<`, and `<=`.
@@ -328,6 +333,17 @@ they build a temporary hash index. NitroMap never uses a nested loop join.
 
 Parsed queries are cached by SQL text, so repeated parameterized queries do not
 need to be parsed again.
+
+### Aggregate behavior
+
+`COUNT(*)` counts rows, while `COUNT(column)` counts non-`NULL` values. `SUM`,
+`AVG`, `MIN`, and `MAX` also ignore `NULL`. An empty input returns `0` for both
+forms of `COUNT` and `NULL` for the other functions.
+
+`SUM` and `AVG` accept Java's primitive numeric wrapper types. Integral sums
+return a `Long`; a sum containing `Float` or `Double` values returns a `Double`.
+`AVG` always returns a `Double`. `MIN` and `MAX` return the selected scalar value.
+Aliases are recommended when selecting the same function more than once.
 
 ### Query optimization
 
@@ -479,8 +495,8 @@ data-plane routes through `.clusterQueries(localQueryEngine)`.
 The execution path is intentionally bounded:
 
 - Scan/filter/projection queries run on each source node and stream binary rows.
-- Grouping performs per-input partial counts, hashes group keys into shuffle
-  partitions, externally sorts partials when needed, then combines them.
+- Grouping builds mergeable partial aggregate states, hashes group keys into
+  shuffle partitions, externally sorts partials when needed, then combines them.
 - Equality joins hash both sides with numeric-aware keys. A small side uses an
   in-memory hash table; oversized or skewed buckets use bounded blocks and spill.
 - Ordered limits keep a bounded top-K heap when K fits the memory allowance.
@@ -794,7 +810,8 @@ current boundaries are deliberate:
 - Secondary indexes follow the supported mutation methods above. Inherited
   `replace`, `compute`, `merge`, `clear`, and collection-view changes bypass
   both persistence and index maintenance.
-- Aggregation currently supports `COUNT(*)` only.
+- Aggregation supports `COUNT`, `SUM`, `AVG`, `MIN`, and `MAX`; `DISTINCT`,
+  `HAVING`, statistical functions, and custom aggregates are not implemented.
 - Joins are inner equality joins; outer joins and arbitrary join expressions are
   not supported.
 - Cluster routing has no replication, discovery, health-based failover, or
@@ -813,7 +830,7 @@ fast common path.
 
 ## Building and testing
 
-Run the 209 correctness and integration tests:
+Run the 224 correctness and integration tests:
 
 ```shell
 mvn test

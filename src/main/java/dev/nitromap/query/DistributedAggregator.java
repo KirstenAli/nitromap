@@ -1,17 +1,12 @@
 package dev.nitromap.query;
 
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 final class DistributedAggregator {
-
-    private static final String GROUP = "@group.";
-    private static final String COUNT = "@group.count";
 
     private final SqlQuery query;
     private final int partitions;
@@ -27,19 +22,22 @@ final class DistributedAggregator {
     }
 
     PartitionedRows aggregate(PartitionedRows input) {
-        PartitionedRows partials = null;
         try {
-            validate();
-            partials = partials(input);
-            return combine(partials);
+            AggregateGroup.validate(query);
+            return aggregateInput(input);
         } finally {
             input.close();
-            if (partials != null) partials.close();
+        }
+    }
+
+    private PartitionedRows aggregateInput(PartitionedRows input) {
+        try (PartitionedRows partials = partials(input)) {
+            return combine(partials);
         }
     }
 
     private PartitionedRows partials(PartitionedRows input) {
-        PartitionedRows output = output(partitions);
+        PartitionedRows output = output();
         try {
             for (int i = 0; i < input.partitions(); i++) partial(input.get(i), output);
             output.finish();
@@ -51,33 +49,36 @@ final class DistributedAggregator {
     }
 
     private void partial(RowStore rows, PartitionedRows output) {
-        Map<GroupKey, Group> groups = new HashMap<>();
-        for (DataRow row : rows) {
-            List<Object> values = query.groups().stream().map(row::read).toList();
-            groups.computeIfAbsent(new GroupKey(values), ignored -> new Group(values)).add();
-            if (groups.size() >= memoryRows) flush(groups, output);
-        }
+        Map<GroupKey, AggregateGroup> groups = new HashMap<>();
+        for (DataRow row : rows) accept(groups, row, output);
         flush(groups, output);
     }
 
-    private void flush(Map<GroupKey, Group> groups, PartitionedRows output) {
-        groups.values().forEach(group -> output.add(
-                ValuePartitioner.partition(group.values(), partitions), partial(group)));
+    private void accept(Map<GroupKey, AggregateGroup> groups, DataRow row,
+                        PartitionedRows output) {
+        List<Object> values = AggregateGroup.values(query, row);
+        groups.computeIfAbsent(new GroupKey(values), ignored -> group(values)).add(row);
+        if (groups.size() >= memoryRows) flush(groups, output);
+    }
+
+    private void flush(Map<GroupKey, AggregateGroup> groups, PartitionedRows output) {
+        groups.values().forEach(group -> output.add(partition(group), partial(group)));
         groups.clear();
     }
 
-    private DataRow partial(Group group) {
-        Map<String, Object> values = new LinkedHashMap<>();
-        for (int i = 0; i < group.values().size(); i++) values.put(GROUP + i, group.values().get(i));
-        values.put(COUNT, group.count());
-        return new DataRow(values);
+    private int partition(AggregateGroup group) {
+        return ValuePartitioner.partition(group.values(), partitions);
+    }
+
+    private DataRow partial(AggregateGroup group) {
+        return new DataRow(group.partial());
     }
 
     private PartitionedRows combine(PartitionedRows partials) {
-        PartitionedRows output = output(partitions);
+        PartitionedRows output = output();
         try {
             for (int i = 0; i < partitions; i++) combine(partials.get(i), output.get(i));
-            if (output.size() == 0 && query.groups().isEmpty()) output.add(0, result(List.of(), 0));
+            addEmpty(output);
             output.finish();
             return output;
         } catch (RuntimeException error) {
@@ -86,29 +87,45 @@ final class DistributedAggregator {
         }
     }
 
+    private void addEmpty(PartitionedRows output) {
+        if (output.size() == 0 && query.groups().isEmpty()) output.add(0, result(group(List.of())));
+    }
+
     private void combine(RowStore partials, RowStore output) {
-        RowStore sorted = new ExternalSorter(directory, memoryRows).sort(partials, comparator());
-        try {
+        try (RowStore sorted = new ExternalSorter(directory, memoryRows).sort(partials, comparator())) {
             reduce(sorted, output);
-        } finally {
-            sorted.close();
         }
     }
 
-    private void reduce(RowStore sorted, RowStore output) {
-        List<Object> values = null;
-        long count = 0;
-        for (DataRow row : sorted) {
-            List<Object> next = values(row);
-            if (values != null && !equal(values, next)) output.add(result(values, count));
-            if (values == null || !equal(values, next)) { values = next; count = 0; }
-            count += ((Number) row.values().get(COUNT)).longValue();
+    private void reduce(RowStore rows, RowStore output) {
+        AggregateGroup current = null;
+        for (DataRow row : rows) current = reduce(current, row, output);
+        if (current != null) output.add(result(current));
+    }
+
+    private AggregateGroup reduce(AggregateGroup current, DataRow row, RowStore output) {
+        List<Object> values = AggregateGroup.partialValues(query, row);
+        if (current != null && equal(current.values(), values)) {
+            current.merge(row);
+            return current;
         }
-        if (values != null) output.add(result(values, count));
+        if (current != null) output.add(result(current));
+        AggregateGroup next = group(values);
+        next.merge(row);
+        return next;
+    }
+
+    private DataRow result(AggregateGroup group) {
+        return new DataRow(group.result());
+    }
+
+    private AggregateGroup group(List<Object> values) {
+        return new AggregateGroup(query, values);
     }
 
     private Comparator<DataRow> comparator() {
-        return (left, right) -> compare(values(left), values(right));
+        return (left, right) -> compare(AggregateGroup.partialValues(query, left),
+                AggregateGroup.partialValues(query, right));
     }
 
     private int compare(List<Object> left, List<Object> right) {
@@ -121,88 +138,12 @@ final class DistributedAggregator {
 
     private boolean equal(List<Object> left, List<Object> right) {
         if (left.size() != right.size()) return false;
-        for (int i = 0; i < left.size(); i++) if (!Values.equal(left.get(i), right.get(i))) return false;
+        for (int i = 0; i < left.size(); i++)
+            if (!Values.equal(left.get(i), right.get(i))) return false;
         return true;
     }
 
-    private List<Object> values(DataRow row) {
-        List<Object> values = new ArrayList<>(query.groups().size());
-        for (int i = 0; i < query.groups().size(); i++) values.add(row.values().get(GROUP + i));
-        return values;
-    }
-
-    private DataRow result(List<Object> groups, long count) {
-        Map<String, Object> values = new LinkedHashMap<>();
-        for (SelectItem item : query.select()) values.put(item.label(), value(item, groups, count));
-        return new DataRow(values);
-    }
-
-    private Object value(SelectItem item, List<Object> groups, long count) {
-        if (item.value() instanceof CountAll) return count;
-        ColumnRef column = (ColumnRef) item.value();
-        for (int i = 0; i < query.groups().size(); i++)
-            if (same(query.groups().get(i), column)) return groups.get(i);
-        throw new IllegalArgumentException("Selected column must appear in GROUP BY: " + column.qualified());
-    }
-
-    private void validate() {
-        if (query.select().stream().anyMatch(item -> item.value() instanceof Wildcard))
-            throw new IllegalArgumentException("GROUP BY cannot select *");
-        query.select().forEach(item -> { if (!(item.value() instanceof CountAll)) value(item, emptyGroups(), 0); });
-    }
-
-    private List<Object> emptyGroups() {
-        return java.util.Collections.nCopies(query.groups().size(), null);
-    }
-
-    private boolean same(ColumnRef left, ColumnRef right) {
-        if (!left.name().equalsIgnoreCase(right.name())) return false;
-        return left.qualifier() == null || right.qualifier() == null
-                || left.qualifier().equalsIgnoreCase(right.qualifier());
-    }
-
-    private PartitionedRows output(int partitions) {
+    private PartitionedRows output() {
         return new PartitionedRows(partitions, directory, memoryRows);
-    }
-
-    private static final class Group {
-
-        private final List<Object> values;
-        private long count;
-
-        Group(List<Object> values) {
-            this.values = values;
-        }
-
-        void add() {
-            count++;
-        }
-
-        List<Object> values() {
-            return values;
-        }
-
-        long count() {
-            return count;
-        }
-    }
-
-    private static final class GroupKey {
-
-        private final List<Object> values;
-
-        GroupKey(List<Object> values) {
-            this.values = values.stream().map(Values::indexKey).toList();
-        }
-
-        @Override
-        public boolean equals(Object other) {
-            return other instanceof GroupKey key && values.equals(key.values);
-        }
-
-        @Override
-        public int hashCode() {
-            return values.hashCode();
-        }
     }
 }

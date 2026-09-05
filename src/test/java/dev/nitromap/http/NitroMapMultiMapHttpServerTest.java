@@ -104,6 +104,14 @@ class NitroMapMultiMapHttpServerTest {
     }
 
     @Test
+    void aggregatesQueryResults() throws Exception {
+        counts.putAll(Map.of("first", 10, "second", 20));
+        String result = text(request("POST", "/query", bytes(aggregateQuery())));
+        assertTrue(result.contains("\"sum\":30"));
+        assertTrue(result.contains("\"avg\":15.0"));
+    }
+
+    @Test
     void returnsNotFoundForUnknownMaps() throws Exception {
         assertEquals(404, request("GET", "/maps/missing/entries/a2V5").statusCode());
     }
@@ -145,6 +153,10 @@ class NitroMapMultiMapHttpServerTest {
     private String query() {
         return "SELECT c.name, n.total FROM customers c "
                 + "INNER JOIN counts n ON c._key = n._key";
+    }
+
+    private String aggregateQuery() {
+        return "SELECT SUM(n.total) AS sum, AVG(n.total) AS avg FROM counts n";
     }
 
     private HttpResponse<byte[]> request(String method, String path) throws Exception {

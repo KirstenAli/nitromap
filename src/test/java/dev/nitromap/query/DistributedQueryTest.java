@@ -12,6 +12,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -74,6 +75,30 @@ class DistributedQueryTest {
     void countsAnEmptyDistributedInput() {
         String sql = "SELECT COUNT(*) AS total FROM customers c WHERE c.score > 100";
         assertEquals(List.of(Map.of("total", 0L)), query(sql));
+    }
+
+    @Test
+    void combinesCommonAggregatesAcrossNodes() {
+        assertEquals(Map.of("count", 5L, "sum", 655L, "avg", 131.0,
+                "min", 5, "max", 300), query(aggregateOrders()).get(0));
+    }
+
+    @Test
+    void combinesGroupedAggregateStates() {
+        String sql = "SELECT c.city, SUM(c.score) AS total, AVG(c.score) AS average "
+                + "FROM customers c GROUP BY c.city ORDER BY c.city";
+        assertEquals(Map.of("city", "London", "total", 40L, "average", 20.0), query(sql).get(0));
+    }
+
+    @Test
+    void returnsEmptyDistributedAggregateValues() throws Exception {
+        Map<String, Object> row = query(emptyAggregates()).get(0);
+        assertEquals(0L, row.get("count"));
+        assertNull(row.get("sum"));
+        assertNull(row.get("avg"));
+        assertNull(row.get("min"));
+        assertNull(row.get("max"));
+        assertEquals(0, files());
     }
 
     @Test
@@ -193,6 +218,17 @@ class DistributedQueryTest {
         try (DistributedQueryResult result = engine.query(sql, parameters)) {
             return result.rows();
         }
+    }
+
+    private String aggregateOrders() {
+        return "SELECT COUNT(o.total) AS count, SUM(o.total) AS sum, AVG(o.total) AS avg, "
+                + "MIN(o.total) AS min, MAX(o.total) AS max FROM orders o WHERE o.total > 0";
+    }
+
+    private String emptyAggregates() {
+        return "SELECT COUNT(c.score) AS count, SUM(c.score) AS sum, AVG(c.score) AS avg, "
+                + "MIN(c.score) AS min, MAX(c.score) AS max "
+                + "FROM customers c WHERE c.score > 100";
     }
 
     private List<Object> values(List<Map<String, Object>> rows, String name) {
