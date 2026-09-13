@@ -6,7 +6,7 @@
   <img src="https://img.shields.io/badge/Java-17%2B-f97316?style=for-the-badge&amp;logo=openjdk&amp;logoColor=white" alt="Java 17 or newer">
   <img src="https://img.shields.io/badge/Maven-Build-c71a36?style=for-the-badge&amp;logo=apachemaven&amp;logoColor=white" alt="Built with Maven">
   <img src="https://img.shields.io/badge/Runtime_dependencies-0-16a34a?style=for-the-badge" alt="Zero runtime dependencies">
-  <img src="https://img.shields.io/badge/Tests-227-2563eb?style=for-the-badge" alt="227 correctness and integration tests">
+  <img src="https://img.shields.io/badge/Tests-240-2563eb?style=for-the-badge" alt="240 correctness and integration tests">
   <img src="https://img.shields.io/badge/License-Apache_2.0-9333ea?style=for-the-badge" alt="Apache License 2.0">
 </p>
 
@@ -22,10 +22,10 @@
 
 ---
 
-NitroMap is an embedded Java record store built around the API developers already
-know: `ConcurrentHashMap`. Reads stay in memory, mutations are persisted by a
-background writer, named maps can be queried with a practical SQL subset, and
-the same maps can be exposed or sharded through Java's built-in networking.
+NitroMap is a fast, embedded Java record store with asynchronous persistence and
+a familiar map API. Reads stay in memory, named maps support practical SQL-like
+queries, and built-in networking can expose or shard the same data across
+processes.
 
 It is designed for applications that need fast local state without introducing
 a database server, ORM, HTTP framework, or runtime dependency graph. The core
@@ -40,7 +40,7 @@ Central, so no additional repository configuration is required:
 <dependency>
     <groupId>io.github.kirstenali</groupId>
     <artifactId>nitromap</artifactId>
-    <version>0.2.0</version>
+    <version>0.3.0</version>
 </dependency>
 ```
 
@@ -58,6 +58,13 @@ NitroMap<String, String> customers = NitroMap.strings("data/customers");
 customers.put("customer-1", "Ada");
 customers.putAll(Map.of("customer-2", "Grace", "customer-3", "Linus"));
 customers.remove("customer-3");
+```
+
+Persistence is optional. For a purely in-memory map, no directory, codec, or
+background writer is created:
+
+```java
+NitroMap<String, String> cache = NitroMap.memory();
 ```
 
 The factory creates the directory, restores existing records, starts background
@@ -132,9 +139,12 @@ NitroMap combines three useful surfaces without hiding how any of them work:
 
 ### Highlights
 
-- Extends `ConcurrentHashMap` instead of replacing it with a proprietary API.
+- Implements `ConcurrentMap` over a composed `ConcurrentHashMap`.
 - Opens persistent UTF-8 string maps with `NitroMap.strings("data/customers")`.
-- Persists `put`, `putAll`, both `remove` variants, and `removeAll` asynchronously.
+- Runs without persistence when created with `NitroMap.memory()`.
+- Persists `put`, `remove`, `replace`, `compute`, `merge`, `replaceAll`, and
+  `clear` mutations asynchronously.
+- Keeps collection views read-only so mutations cannot bypass persistence or indexes.
 - Offers opt-in destructive background eviction for entry-bounded maps.
 - Keeps serialization and file I/O away from application write threads.
 - Gives factory-created maps one shared JVM shutdown safety net.
@@ -147,13 +157,14 @@ NitroMap combines three useful surfaces without hiding how any of them work:
 - Serves one or many named maps through built-in Java networking.
 - Provides authorization and native HTTP filter hooks without an external web framework.
 - Has no runtime dependencies beyond the JDK.
-- Is verified by 227 correctness and integration tests plus six opt-in benchmark tests.
+- Is verified by 240 correctness and integration tests plus six opt-in benchmark tests.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    A["Application threads"] -->|"put / remove"| B["NitroMap<br/>ConcurrentHashMap"]
+    A["Application threads"] -->|"map mutation"| B["NitroMap<br/>ConcurrentMap facade"]
+    B --- M["Composed<br/>ConcurrentHashMap"]
     B -->|"mark dirty"| C["Dirty-key coalescer"]
     C --> D["Background writer"]
     D --> E[("nitromap.log")]
@@ -166,14 +177,14 @@ flowchart LR
     classDef hot fill:#ff9f1c,color:#111827,stroke:#ff5a1f,stroke-width:2px;
     classDef service fill:#16233f,color:#f8fafc,stroke:#7dd3fc,stroke-width:1px;
     class B hot;
-    class A,C,D,E,V,Q,H service;
+    class A,C,D,E,M,V,Q,H service;
 ```
 
 ## How persistence works
 
 A persistent mutation follows a short path:
 
-1. The in-memory `ConcurrentHashMap` is updated.
+1. The composed in-memory `ConcurrentHashMap` is updated.
 2. The changed key is marked in a concurrent dirty map.
 3. A single background writer collects dirty keys every few milliseconds.
 4. It reads each key's current state and appends the batch to `nitromap.log`.
@@ -414,8 +425,9 @@ Catalog catalog = new Catalog()
 
 An index accelerates equality filters on its base table and equality joins when
 the indexed column belongs to the joined table. It supports duplicate, numeric,
-and `NULL` values. Indexes require `NitroMap` data and stay current after
-`put`, `putAll`, both supported `remove` variants, and `removeAll`.
+and `NULL` values. Indexes require `NitroMap` data and stay current after every
+supported map mutation, including `put`, `remove`, `replace`, `compute`,
+`merge`, `replaceAll`, and `clear`.
 
 Indexes are deliberately opt-in. Building one scans the map once, stores a
 key-to-value entry plus a bucket membership for each row, and adds work to
@@ -751,23 +763,23 @@ vary with the JVM, CPU, filesystem, thermal state, data shape, and contention.
 
 | Scenario | Median throughput | Median cost |
 |---|---:|---:|
-| In-memory `get` | 272.8 million ops/s | 3.7 ns/op |
-| In-memory `put` | 126.5 million ops/s | 7.9 ns/op |
-| Eviction-ready `put` below its limit | 103.2 million ops/s | 9.7 ns/op |
-| Persistent `put` enqueue | 61.9 million ops/s | 16.2 ns/op |
-| Persistent `put` plus durability checkpoint | 4.08 million ops/s | 245.3 ns/op |
-| Compacted log replay | 438,698 records/s | 2,279.5 ns/record |
-| Cached ordered SQL query | 1,507 queries/s | 663.5 µs/query |
-| Direct `_key` query | 755,610 queries/s | 1.323 µs/query |
-| Secondary-index query | 757,983 queries/s | 1.319 µs/query |
-| Full-scan equality query | 576 queries/s | 1,735.8 µs/query |
-| Early `LIMIT` query | 829,744 queries/s | 1.205 µs/query |
-| Plain row `put` | 68.2 million ops/s | 14.7 ns/op |
-| Secondary-indexed row `put` | 10.0 million ops/s | 99.5 ns/op |
+| In-memory `get` | 277.7 million ops/s | 3.6 ns/op |
+| In-memory `put` | 131.7 million ops/s | 7.6 ns/op |
+| Eviction-ready `put` below its limit | 108.3 million ops/s | 9.2 ns/op |
+| Persistent `put` enqueue | 69.0 million ops/s | 14.5 ns/op |
+| Persistent `put` plus durability checkpoint | 3.97 million ops/s | 251.9 ns/op |
+| Compacted log replay | 456,905 records/s | 2,188.6 ns/record |
+| Cached ordered SQL query | 1,696 queries/s | 589.6 µs/query |
+| Direct `_key` query | 1,079,302 queries/s | 0.927 µs/query |
+| Secondary-index query | 966,254 queries/s | 1.035 µs/query |
+| Full-scan equality query | 508 queries/s | 1,969.5 µs/query |
+| Early `LIMIT` query | 756,272 queries/s | 1.322 µs/query |
+| Plain row `put` | 70.3 million ops/s | 14.2 ns/op |
+| Secondary-indexed row `put` | 11.5 million ops/s | 87.1 ns/op |
 
 The map benchmarks rotate through 65,536 hot keys on one application thread.
 The eviction-ready scenario configures a 131,072-entry limit without crossing
-it, isolating the configured hot-path check; it added 1.8 ns per `put` in this
+it, isolating the configured hot-path check; it added 1.6 ns per `put` in this
 run. Active eviction cost depends on removal volume, index count, and
 persistence batching.
 
@@ -779,7 +791,7 @@ plan.
 
 The access-path scenarios query 50,000 uniquely keyed rows. The indexed and
 full-scan scenarios execute the same equality predicate; on this run the index
-delivered roughly 1,316 times more queries per second. The write comparison
+delivered roughly 1,902 times more queries per second. The write comparison
 rotates through the same 50,000 keys and shows the cost of maintaining one
 unique-value secondary index.
 
@@ -793,8 +805,8 @@ NitroMap follows a few practical rules:
 
 ### Keep the write path short
 
-`put` and `remove` update memory and mark a key dirty. Encoding, batching, disk
-writes, disk synchronization, and configured eviction belong to background
+Map mutations update memory and mark the affected key dirty. Encoding, batching,
+disk writes, disk synchronization, and configured eviction belong to background
 workers.
 
 ### Prefer sequential I/O
@@ -820,19 +832,20 @@ in-memory maps. Neither layer needs to understand the other's implementation.
 
 ### Be honest about consistency
 
-Queries are weakly consistent with concurrent writes, matching
-`ConcurrentHashMap` iteration semantics. NitroMap does not pause writers or copy
-the entire map to create a transactional snapshot.
+Queries are weakly consistent with concurrent writes, matching the iteration
+semantics of the composed `ConcurrentHashMap`. NitroMap does not pause writers
+or copy the entire map to create a transactional snapshot.
 
 ## Scope and current boundaries
 
 NitroMap is an early-stage embedded engine, not a transactional database. Its
 current boundaries are deliberate:
 
-- Direct `put`, `putAll`, both `remove` overloads, and `removeAll` are persisted.
-  Other inherited mutations—including `replace`, `compute`, `merge`, and
-  changes through collection views—currently affect memory without writing the
-  log.
+- `keySet()`, `values()`, and `entrySet()` are live, read-only views. Structural
+  changes must use the map API so persistence and secondary indexes stay current.
+- NitroMap implements `ConcurrentMap`; it is not a `ConcurrentHashMap` subtype.
+  Concrete-class operations such as parallel `search` and `reduce` are not part
+  of its public API.
 - Values should be treated as immutable. Mutating an object returned by `get`
   does not mark its key dirty; replace it with another `put` instead.
 - Recent asynchronous mutations can be lost if the process terminates before
@@ -846,9 +859,6 @@ current boundaries are deliberate:
 - A persistence directory should be opened by only one NitroMap instance at a
   time. Cross-process file locking is not implemented yet.
 - Queries are not transactional and may observe concurrent changes.
-- Secondary indexes follow the supported mutation methods above. Inherited
-  `replace`, `compute`, `merge`, `clear`, and collection-view changes bypass
-  both persistence and index maintenance.
 - Aggregation supports `COUNT`, `SUM`, `AVG`, `MIN`, and `MAX`; `DISTINCT`,
   `HAVING`, statistical functions, and custom aggregates are not implemented.
 - Joins are inner equality joins; outer joins and arbitrary join expressions are
@@ -869,7 +879,7 @@ fast common path.
 
 ## Building and testing
 
-Run the 227 correctness and integration tests:
+Run the 240 correctness and integration tests:
 
 ```shell
 mvn test
@@ -887,9 +897,10 @@ Run the six opt-in benchmark tests:
 mvn -Pbenchmark test
 ```
 
-The correctness suite covers map semantics, convenience factories, shutdown
-lifecycle, persisted writes and removals, restart recovery, torn and invalid
-records, background-writer failures, compaction failures and races, concurrency,
+The correctness suite covers map semantics, composed mutation routing,
+read-only views, convenience factories, shutdown lifecycle, persisted writes,
+removals, replacements, computations, merges, clearing, restart recovery, torn
+and invalid records, background-writer failures, compaction failures and races, concurrency,
 codecs, SQL parsing and execution, join strategies, grouping, ordering,
 validation, binary HTTP batches, authorization, filters, JSON encoding,
 live REST requests, named-map routing, heterogeneous codecs, stable cluster
@@ -915,7 +926,7 @@ assets/
 └── nitromap-logo.svg        project wordmark and README banner
 
 src/main/java/dev/nitromap/
-├── NitroMap.java             concurrent map and public persistence API
+├── NitroMap.java             composed concurrent map and persistence API
 ├── Evictor.java              opt-in destructive background eviction
 ├── ShutdownRegistry.java     shared JVM shutdown safety net
 ├── codec/                   binary encoding contracts and codecs

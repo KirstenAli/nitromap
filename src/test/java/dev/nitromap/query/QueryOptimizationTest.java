@@ -88,6 +88,31 @@ class QueryOptimizationTest {
         assertEquals(List.of("Alice"), names(engine, "city", "Rome"));
     }
 
+    @Test
+    void indexesComputedAndMergedMutations() {
+        ScanCountingMap<String, Person> people = people();
+        QueryEngine engine = indexed(people, "city");
+        computeIndexedPeople(people);
+        assertEquals(List.of("Bob", "Eve"), names(engine, "city", "London"));
+        assertEquals(List.of("Cara"), names(engine, "city", "Paris"));
+    }
+
+    @Test
+    void indexesReplacementMutations() {
+        ScanCountingMap<String, Person> people = people();
+        QueryEngine engine = indexed(people, "city");
+        replaceIndexedPeople(people);
+        assertEquals(List.of("Alice", "Bob", "Cara", "Dan"), names(engine, "city", "Rome"));
+    }
+
+    @Test
+    void indexesClearMutations() {
+        ScanCountingMap<String, Person> people = people();
+        QueryEngine engine = indexed(people, "city");
+        people.clear();
+        assertEquals(List.of(), names(engine, "city", "London"));
+    }
+
     private void mutateIndexedPeople(ScanCountingMap<String, Person> people) {
         people.putAll(Map.of("c5", new Person("Eve", "London", 50, null)));
         people.put("c1", new Person("Alice", "Rome", 10, null));
@@ -95,6 +120,23 @@ class QueryOptimizationTest {
         people.remove("c4", people.get("c4"));
         people.put("c6", new Person("Fay", "London", 60, null));
         people.removeAll(Set.of("c6"));
+    }
+
+    private void computeIndexedPeople(ScanCountingMap<String, Person> people) {
+        people.merge("c1", person("Alice", "Rome"), (old, replacement) -> replacement);
+        people.compute("c3", (key, value) -> person("Cara", "Paris"));
+        people.computeIfAbsent("c5", key -> person("Eve", "London"));
+        people.computeIfPresent("c2", (key, value) -> person("Bob", "London"));
+    }
+
+    private void replaceIndexedPeople(ScanCountingMap<String, Person> people) {
+        people.replace("c1", person("Alice", "Paris"));
+        people.replace("c2", people.get("c2"), person("Bob", "Paris"));
+        people.replaceAll((key, value) -> person(value.name(), "Rome"));
+    }
+
+    private Person person(String name, String city) {
+        return new Person(name, city, 0, null);
     }
 
     @Test

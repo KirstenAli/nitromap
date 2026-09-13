@@ -12,6 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 import java.util.stream.IntStream;
 
 import static java.nio.file.StandardOpenOption.APPEND;
@@ -172,6 +173,47 @@ class PersistenceTest {
         assertEquals(Map.of(), read());
     }
 
+    @Test
+    void persistsPutIfAbsent() throws Exception {
+        mutate(map -> map.putIfAbsent("new", "value"));
+        assertEquals(Map.of("new", "value"), read());
+    }
+
+    @Test
+    void persistsReplacements() throws Exception {
+        write(Map.of("first", "1", "second", "2"));
+        mutate(map -> replace(map));
+        assertEquals(Map.of("first", "one", "second", "two"), read());
+    }
+
+    @Test
+    void persistsComputedMutations() throws Exception {
+        write(Map.of("present", "old", "deleted", "old"));
+        mutate(this::compute);
+        assertEquals(Map.of("present", "new", "created", "new"), read());
+    }
+
+    @Test
+    void persistsMergedMutations() throws Exception {
+        write(Map.of("total", "1", "deleted", "old"));
+        mutate(this::merge);
+        assertEquals(Map.of("total", "12", "created", "new"), read());
+    }
+
+    @Test
+    void persistsReplaceAll() throws Exception {
+        write(Map.of("first", "1", "second", "2"));
+        mutate(map -> map.replaceAll((key, value) -> value + value));
+        assertEquals(Map.of("first", "11", "second", "22"), read());
+    }
+
+    @Test
+    void persistsClear() throws Exception {
+        write(Map.of("first", "1", "second", "2"));
+        mutate(Map::clear);
+        assertEquals(Map.of(), read());
+    }
+
     private void write(String key, String value) throws Exception {
         try (NitroMap<String, String> map = persistentMap()) {
             map.put(key, value);
@@ -227,6 +269,29 @@ class PersistenceTest {
             map.put(key, value);
             map.remove(key);
         }
+    }
+
+    private void mutate(Consumer<NitroMap<String, String>> mutation) throws Exception {
+        try (NitroMap<String, String> map = persistentMap()) {
+            mutation.accept(map);
+        }
+    }
+
+    private void replace(NitroMap<String, String> map) {
+        map.replace("first", "one");
+        map.replace("second", "2", "two");
+    }
+
+    private void compute(NitroMap<String, String> map) {
+        map.computeIfAbsent("created", key -> "new");
+        map.computeIfPresent("present", (key, value) -> "new");
+        map.compute("deleted", (key, value) -> null);
+    }
+
+    private void merge(NitroMap<String, String> map) {
+        map.merge("created", "new", String::concat);
+        map.merge("total", "2", String::concat);
+        map.merge("deleted", "new", (left, right) -> null);
     }
 
     private Map<String, String> read() throws Exception {
