@@ -5,28 +5,32 @@ import dev.nitromap.codec.Utf8StringCodec;
 import dev.nitromap.persistence.LogStore;
 
 import java.io.IOException;
-import java.io.Serial;
 import java.io.UncheckedIOException;
 import java.nio.file.Path;
+import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 /**
- * A concurrent map with asynchronous, batched persistence.
+ * A concurrent map with optional asynchronous, batched persistence.
  *
  * @param <K> the key type
  * @param <V> the value type
  */
-public class NitroMap<K, V> extends ConcurrentHashMap<K, V> implements AutoCloseable {
+public class NitroMap<K, V> extends AbstractMap<K, V>
+        implements ConcurrentMap<K, V>, AutoCloseable {
 
-    @Serial
-    private static final long serialVersionUID = 1L;
-
+    private final ConcurrentHashMap<K, V> entries;
+    private final Map<K, V> view;
     private final transient LogStore<K, V> store;
     private transient volatile List<Consumer<K>> mutationListeners;
     private transient volatile Evictor<K, V> evictor;
@@ -58,60 +62,144 @@ public class NitroMap<K, V> extends ConcurrentHashMap<K, V> implements AutoClose
         }
     }
 
+    /** Creates an in-memory map with persistence disabled. */
+    public static <K, V> NitroMap<K, V> memory() {
+        return new NitroMap<>();
+    }
+
     public NitroMap() {
-        super();
+        entries = new ConcurrentHashMap<>();
+        view = Collections.unmodifiableMap(entries);
         store = null;
     }
 
     public NitroMap(int initialCapacity) {
-        super(initialCapacity);
+        entries = new ConcurrentHashMap<>(initialCapacity);
+        view = Collections.unmodifiableMap(entries);
         store = null;
     }
 
-    public NitroMap(Map<? extends K, ? extends V> entries) {
-        super(entries);
+    public NitroMap(Map<? extends K, ? extends V> initialEntries) {
+        entries = new ConcurrentHashMap<>(initialEntries);
+        view = Collections.unmodifiableMap(entries);
         store = null;
     }
 
     public NitroMap(Path directory, Codec<K> keys, Codec<V> values) throws IOException {
+        entries = new ConcurrentHashMap<>();
+        view = Collections.unmodifiableMap(entries);
         store = new LogStore<>(directory, keys, values, this::current, this::snapshot,
                 this::replayPut, this::replayRemove);
         store.start();
     }
 
     @Override
+    public int size() {
+        return entries.size();
+    }
+
+    @Override
+    public boolean isEmpty() {
+        return entries.isEmpty();
+    }
+
+    @Override
+    public boolean containsKey(Object key) {
+        return entries.containsKey(key);
+    }
+
+    @Override
+    public boolean containsValue(Object value) {
+        return entries.containsValue(value);
+    }
+
+    @Override
     public V put(K key, V value) {
-        V previous = super.put(key, value);
+        V previous = entries.put(key, value);
         changed(key);
         evict();
         return previous;
     }
 
     @Override
-    public void putAll(Map<? extends K, ? extends V> entries) {
-        super.putAll(entries);
-        if (store != null) store.markAll(entries.keySet());
-        notifyMutations(entries.keySet());
+    public void putAll(Map<? extends K, ? extends V> additions) {
+        entries.putAll(additions);
+        changedAll(additions.keySet());
         evict();
     }
 
     @Override
     public V get(Object key) {
-        return super.get(key);
+        return entries.get(key);
+    }
+
+    @Override
+    public V getOrDefault(Object key, V defaultValue) {
+        return entries.getOrDefault(key, defaultValue);
     }
 
     @Override
     public V remove(Object key) {
-        V previous = super.remove(key);
+        V previous = entries.remove(key);
         if (previous != null) markRemoved(key);
         return previous;
     }
 
     @Override
     public boolean remove(Object key, Object value) {
-        boolean removed = super.remove(key, value);
+        boolean removed = entries.remove(key, value);
         if (removed) markRemoved(key);
         return removed;
+    }
+
+    @Override
+    public V putIfAbsent(K key, V value) {
+        V previous = entries.putIfAbsent(key, value);
+        if (previous == null) inserted(key);
+        return previous;
+    }
+
+    @Override
+    public V replace(K key, V value) {
+        V previous = entries.replace(key, value);
+        if (previous != null) changed(key);
+        return previous;
+    }
+
+    @Override
+    public boolean replace(K key, V oldValue, V newValue) {
+        boolean replaced = entries.replace(key, oldValue, newValue);
+        if (replaced) changed(key);
+        return replaced;
+    }
+
+    @Override
+    public void clear() {
+        entries.keySet().forEach(this::remove);
+    }
+
+    @Override
+    public Set<K> keySet() {
+        return view.keySet();
+    }
+
+    @Override
+    public Collection<V> values() {
+        return view.values();
+    }
+
+    @Override
+    public Set<Entry<K, V>> entrySet() {
+        return view.entrySet();
+    }
+
+    @Override
+    public void forEach(BiConsumer<? super K, ? super V> action) {
+        entries.forEach(action);
+    }
+
+    public long mappingCount() {
+        return entries.mappingCount();
     }
 
     public boolean removeAll(Collection<?> keys) {
@@ -162,19 +250,19 @@ public class NitroMap<K, V> extends ConcurrentHashMap<K, V> implements AutoClose
     }
 
     private void replayPut(K key, V value) {
-        super.put(key, value);
+        entries.put(key, value);
     }
 
     private V current(K key) {
-        return super.get(key);
+        return entries.get(key);
     }
 
     private void replayRemove(K key) {
-        super.remove(key);
+        entries.remove(key);
     }
 
     private Map<K, V> snapshot() {
-        return Map.copyOf(this);
+        return Map.copyOf(entries);
     }
 
     @SuppressWarnings("unchecked")
@@ -185,6 +273,16 @@ public class NitroMap<K, V> extends ConcurrentHashMap<K, V> implements AutoClose
     private void changed(K key) {
         if (store != null) store.mark(key);
         notifyMutation(key);
+    }
+
+    private void changedAll(Iterable<? extends K> keys) {
+        if (store != null) store.markAll(keys);
+        notifyMutations(keys);
+    }
+
+    private void inserted(K key) {
+        changed(key);
+        evict();
     }
 
     private void notifyMutations(Iterable<? extends K> keys) {

@@ -45,14 +45,14 @@
       <div class="hero-glow hero-glow-two"></div>
       <div class="shell hero-grid">
         <div class="hero-copy reveal">
-          <a class="release-pill" href="https://central.sonatype.com/artifact/io.github.kirstenali/nitromap/0.2.0">
+          <a class="release-pill" href="https://central.sonatype.com/artifact/io.github.kirstenali/nitromap/0.3.0">
             <span class="status-dot"></span>
-            Version 0.2.0 on Maven Central
+            Version 0.3.0 on Maven Central
             <span aria-hidden="true">→</span>
           </a>
           <p class="eyebrow">Embedded Java record store</p>
           <h1>The map you know.<br><span>Persistence that keeps up.</span></h1>
-          <p class="hero-lede">NitroMap adds asynchronous persistence, SQL-like querying, REST, and shared-nothing clustering to the familiar <code>ConcurrentHashMap</code> API.</p>
+          <p class="hero-lede">NitroMap combines fast in-memory access with asynchronous persistence, SQL-like querying, REST, and shared-nothing clustering.</p>
           <div class="hero-actions">
             <a class="button button-primary" href="#quickstart">Start building <span aria-hidden="true">→</span></a>
             <a class="button button-secondary" href="https://github.com/KirstenAli/nitromap">View on GitHub <span aria-hidden="true">↗</span></a>
@@ -94,9 +94,9 @@ customers.<span class="code-method">put</span>(<span class="code-string">"custom
 
     <section class="proof-bar" aria-label="NitroMap project statistics">
       <div class="shell proof-grid">
-        <div><strong>227</strong><span>correctness tests</span></div>
+        <div><strong>240</strong><span>correctness tests</span></div>
         <div><strong>0</strong><span>runtime dependencies</span></div>
-        <div><strong>61.9M</strong><span>persistent put enqueues/s<sup>1</sup></span></div>
+        <div><strong>69.0M</strong><span>persistent put enqueues/s<sup>1</sup></span></div>
         <div><strong>17+</strong><span>Java compatibility</span></div>
       </div>
     </section>
@@ -133,8 +133,8 @@ customers.<span class="code-method">put</span>(<span class="code-string">"custom
               <span class="feature-index">02</span>
               <span class="feature-label">Familiar API</span>
             </div>
-            <h3>A real <code>ConcurrentHashMap</code>.</h3>
-            <p>Use the API Java developers already understand. Reads remain direct, concurrent, and entirely in memory.</p>
+            <h3><code>ConcurrentMap</code> on the surface.</h3>
+            <p>A composed <code>ConcurrentHashMap</code> keeps reads direct while every supported mutation passes through persistence and index hooks.</p>
             <div class="map-rings" aria-hidden="true"><span></span><span></span><span></span></div>
           </article>
 
@@ -309,15 +309,15 @@ customers.<span class="code-method">put</span>(<span class="code-string">"custom
         <div class="benchmark-grid reveal">
           <div class="benchmark-hero">
             <span>In-memory get</span>
-            <strong>272.8<small>M ops/s</small></strong>
+            <strong>277.7<small>M ops/s</small></strong>
             <div class="benchmark-track"><i style="--width: 100%"></i></div>
-            <em>3.7 ns/op median reference cost</em>
+            <em>3.6 ns/op median reference cost</em>
           </div>
           <div class="benchmark-list">
-            <div><span>In-memory put</span><strong>126.5M <small>ops/s</small></strong></div>
-            <div><span>Persistent put enqueue</span><strong>61.9M <small>ops/s</small></strong></div>
-            <div><span>Direct key query</span><strong>755.6K <small>queries/s</small></strong></div>
-            <div><span>Secondary-index query</span><strong>758.0K <small>queries/s</small></strong></div>
+            <div><span>In-memory put</span><strong>131.7M <small>ops/s</small></strong></div>
+            <div><span>Persistent put enqueue</span><strong>69.0M <small>ops/s</small></strong></div>
+            <div><span>Direct key query</span><strong>1.08M <small>queries/s</small></strong></div>
+            <div><span>Secondary-index query</span><strong>966.3K <small>queries/s</small></strong></div>
           </div>
         </div>
         <p class="benchmark-note reveal"><sup>1</sup> Reference run: macOS on ARM, 10 available processors, Java 25 runtime, compiled for Java 17. Workload, hardware, filesystem, thermals, and contention will change results. Run the bundled benchmark profile on your target system.</p>
@@ -329,9 +329,9 @@ customers.<span class="code-method">put</span>(<span class="code-string">"custom
         <div class="quickstart-copy reveal">
           <p class="eyebrow">Start in one minute</p>
           <h2>One dependency.<br>No server to operate.</h2>
-          <p>Add NitroMap from Maven Central, choose a directory, and keep using normal map operations.</p>
+          <p>Add NitroMap from Maven Central, choose persistent or memory-only storage, and keep using normal map operations.</p>
           <div class="quick-links">
-            <a href="https://central.sonatype.com/artifact/io.github.kirstenali/nitromap/0.2.0">Maven Central <span>↗</span></a>
+            <a href="https://central.sonatype.com/artifact/io.github.kirstenali/nitromap/0.3.0">Maven Central <span>↗</span></a>
             <a href="https://github.com/KirstenAli/nitromap#quick-start">Full documentation <span>↗</span></a>
           </div>
         </div>
@@ -345,7 +345,7 @@ customers.<span class="code-method">put</span>(<span class="code-string">"custom
             <pre id="maven-code"><code>&lt;<span class="code-keyword">dependency</span>&gt;
   &lt;<span class="code-keyword">groupId</span>&gt;io.github.kirstenali&lt;/<span class="code-keyword">groupId</span>&gt;
   &lt;<span class="code-keyword">artifactId</span>&gt;nitromap&lt;/<span class="code-keyword">artifactId</span>&gt;
-  &lt;<span class="code-keyword">version</span>&gt;<span class="code-string">0.2.0</span>&lt;/<span class="code-keyword">version</span>&gt;
+  &lt;<span class="code-keyword">version</span>&gt;<span class="code-string">0.3.0</span>&lt;/<span class="code-keyword">version</span>&gt;
 &lt;/<span class="code-keyword">dependency</span>&gt;</code></pre>
           </div>
 
@@ -399,7 +399,7 @@ customers.<span class="code-method">put</span>(<span class="code-string">"custom
       <p>Fast by default. Built to persist.</p>
       <div class="footer-links">
         <a href="https://github.com/KirstenAli/nitromap">GitHub</a>
-        <a href="https://central.sonatype.com/artifact/io.github.kirstenali/nitromap/0.2.0">Maven Central</a>
+        <a href="https://central.sonatype.com/artifact/io.github.kirstenali/nitromap/0.3.0">Maven Central</a>
         <a href="https://github.com/KirstenAli/nitromap/blob/main/LICENSE">License</a>
       </div>
       <small>© <span data-year></span> Kirsten Ali</small>

@@ -5,17 +5,28 @@ import org.junit.jupiter.api.Test;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class NitroMapTest {
 
     @Test
-    void isAConcurrentHashMap() {
-        assertInstanceOf(ConcurrentHashMap.class, new NitroMap<>());
+    void exposesTheConcurrentMapApi() {
+        assertInstanceOf(ConcurrentMap.class, NitroMap.memory());
+    }
+
+    @Test
+    void keepsCollectionViewsReadOnly() {
+        NitroMap<String, Integer> map = new NitroMap<>(Map.of("count", 1));
+        assertThrows(UnsupportedOperationException.class, () -> map.keySet().remove("count"));
+        assertThrows(UnsupportedOperationException.class, () -> map.values().clear());
+        assertThrows(UnsupportedOperationException.class, () -> map.entrySet().iterator().next().setValue(2));
     }
 
     @Test
@@ -75,10 +86,33 @@ class NitroMapTest {
     }
 
     @Test
-    void retainsInheritedOperationsInMemory() {
+    void supportsComputedOperationsInMemory() {
         NitroMap<String, Integer> map = new NitroMap<>(Map.of("count", 1));
         map.compute("count", (key, count) -> count + 1);
         assertEquals(2, map.get("count"));
+    }
+
+    @Test
+    void supportsMergedOperationsInMemory() {
+        NitroMap<String, Integer> map = new NitroMap<>(Map.of("count", 1));
+        map.merge("count", 2, Integer::sum);
+        assertEquals(3, map.get("count"));
+    }
+
+    @Test
+    void mergesAtomicallyUnderContention() {
+        NitroMap<String, Integer> map = NitroMap.memory();
+        IntStream.range(0, 10_000).parallel()
+                .forEach(index -> map.merge("count", 1, Integer::sum));
+        assertEquals(10_000, map.get("count"));
+    }
+
+    @Test
+    void supportsReplacementAndClearInMemory() {
+        NitroMap<String, Integer> map = new NitroMap<>(Map.of("count", 1));
+        map.replaceAll((key, value) -> value + 1);
+        map.clear();
+        assertTrue(map.isEmpty());
     }
 
     @Test
